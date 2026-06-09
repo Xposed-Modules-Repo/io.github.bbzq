@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">bzzq</string>
-    <string name="xposed_description">API 101 research module that is active only when the Xposed framework reports NPatch.</string>
+    <string name="xposed_description">API 101 research module active only on NPatch, Vector, or LSPosed versions newer than 7700.</string>
 </resources>
