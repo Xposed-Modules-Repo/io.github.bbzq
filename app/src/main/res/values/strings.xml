@@ -6,6 +6,7 @@
     <string name="auto_like_video_detail_title">视频详情页自动点赞</string>
     <string name="fix_live_quality_url_title">直播画质 URL 修正</string>
     <string name="skip_mini_game_reward_ad_title">跳过小游戏奖励广告</string>
+    <string name="block_live_reservation_title">屏蔽直播预约</string>
     <string name="purify_story_video_ad_title">竖屏视频广告净化</string>
     <string name="purify_story_video_ad_blocked_count">累计拦截：%1$d</string>
 </resources>

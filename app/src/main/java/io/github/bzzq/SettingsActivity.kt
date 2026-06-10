@@ -54,6 +54,11 @@ class SettingsActivity : Activity() {
             ModuleSettings.KEY_SKIP_MINI_GAME_REWARD_AD_ENABLED,
             true,
         ))
+        root.addView(createFeatureSwitch(
+            R.string.block_live_reservation_title,
+            ModuleSettings.KEY_BLOCK_LIVE_RESERVATION_ENABLED,
+            false,
+        ))
 
         storyVideoAdSwitch = Switch(this).apply {
             text = getString(R.string.purify_story_video_ad_title)

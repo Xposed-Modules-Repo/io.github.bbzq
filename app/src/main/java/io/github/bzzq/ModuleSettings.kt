@@ -12,6 +12,7 @@ object ModuleSettings {
     const val KEY_PURIFY_STORY_VIDEO_AD_TAGS = "purify_story_video_ad_tags"
     const val KEY_PURIFY_STORY_VIDEO_AD_BLOCKED_COUNT = "purify_story_video_ad_blocked_count"
     const val KEY_SKIP_MINI_GAME_REWARD_AD_ENABLED = "skip_mini_game_reward_ad_enabled"
+    const val KEY_BLOCK_LIVE_RESERVATION_ENABLED = "block_live_reservation_enabled"
 
     val defaultStoryVideoAdTags = setOf("ad")
 
@@ -54,6 +55,10 @@ object ModuleSettings {
 
     fun isSkipMiniGameRewardAdEnabled(prefs: SharedPreferences): Boolean {
         return prefs.getBoolean(KEY_SKIP_MINI_GAME_REWARD_AD_ENABLED, true)
+    }
+
+    fun isBlockLiveReservationEnabled(prefs: SharedPreferences): Boolean {
+        return prefs.getBoolean(KEY_BLOCK_LIVE_RESERVATION_ENABLED, false)
     }
 }
 
