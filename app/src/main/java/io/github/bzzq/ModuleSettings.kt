@@ -18,6 +18,7 @@ object ModuleSettings {
     const val KEY_ENHANCE_LONG_PRESS_COPY_ENABLED = "enhance_long_press_copy_enabled"
     const val KEY_PURIFY_SHARE_ENABLED = "purify_share_enabled"
     const val KEY_FULL_NUMBER_FORMAT_ENABLED = "full_number_format_enabled"
+    const val KEY_UNLOCK_COMMENT_GIF_ENABLED = "unlock_comment_gif_enabled"
     const val KEY_LAST_ACCESS_KEY = "last_access_key"
 
     val defaultStoryVideoAdTags = setOf("ad")
@@ -73,6 +74,9 @@ object ModuleSettings {
 
     fun isFullNumberFormatEnabled(prefs: SharedPreferences): Boolean =
         prefs.getBoolean(KEY_FULL_NUMBER_FORMAT_ENABLED, false)
+
+    fun isUnlockCommentGifEnabled(prefs: SharedPreferences): Boolean =
+        prefs.getBoolean(KEY_UNLOCK_COMMENT_GIF_ENABLED, false)
 }
 
 data class StoryVideoAdTag(

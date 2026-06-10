@@ -152,6 +152,14 @@ class SettingsActivity : Activity() {
                 defaultValue = false,
             ),
         )
+        content.addView(
+            createFeatureSwitch(
+                titleRes = R.string.unlock_comment_gif_title,
+                summaryRes = R.string.unlock_comment_gif_summary,
+                key = ModuleSettings.KEY_UNLOCK_COMMENT_GIF_ENABLED,
+                defaultValue = false,
+            ),
+        )
         content.addView(createSectionTitle(R.string.story_filter_section_title))
         content.addView(
             createFeatureSwitch(

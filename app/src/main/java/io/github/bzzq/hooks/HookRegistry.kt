@@ -28,6 +28,7 @@ object HookRegistry {
             SelectableTextHook(packageName),
             SharePurifyHook(packageName),
             FullNumberFormatHook(packageName),
+            UnlockCommentGifHook(packageName),
         )
     }
 

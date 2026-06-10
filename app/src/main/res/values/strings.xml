@@ -38,6 +38,8 @@
     <string name="purify_share_summary">净化复制链接和分享文本中的追踪参数，尽量保留分页、评论定位等必要信息。</string>
     <string name="full_number_format_title">完整数字显示</string>
     <string name="full_number_format_summary">在我的页和空间页显示完整统计数字，不再缩写为万、亿。</string>
+    <string name="unlock_comment_gif_title">评论区 GIF 解锁</string>
+    <string name="unlock_comment_gif_summary">恢复评论区 GIF 缩略图播放，并移除图片右上角的大会员专属角标。</string>
 
     <string name="purify_story_video_ad_title">净化竖屏视频广告</string>
     <string name="purify_story_video_ad_summary">按标签过滤竖屏视频流中的广告、购物和推广内容。</string>
