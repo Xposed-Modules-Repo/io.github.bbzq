@@ -25,6 +25,7 @@ object HookRegistry {
             BiliEntryHook(packageName),
             AccessKeyCaptureHook(packageName),
             FreeCopyHook(packageName),
+            SelectableTextHook(packageName),
         )
     }
 

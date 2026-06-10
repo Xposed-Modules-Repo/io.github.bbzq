@@ -33,7 +33,7 @@
     <string name="disable_long_press_copy_title">去除长按复制</string>
     <string name="disable_long_press_copy_summary">禁用长按评论/动态/视频简介后直接复制到剪贴板，减少误触。</string>
     <string name="enhance_long_press_copy_title">长按自由复制</string>
-    <string name="enhance_long_press_copy_summary">需先开启“去除长按复制”。触发复制时弹出可自由选择的文本窗口，并可手动复制全部。</string>
+    <string name="enhance_long_press_copy_summary">需先开启“去除长按复制”。覆盖评论、动态、视频简介和部分私信场景，弹出可自由选择的文本窗口。</string>
 
     <string name="purify_story_video_ad_title">净化竖屏视频广告</string>
     <string name="purify_story_video_ad_summary">按标签过滤竖屏视频流中的广告、购物和推广内容。</string>
