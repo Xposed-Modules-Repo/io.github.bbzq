@@ -110,6 +110,14 @@ class SettingsActivity : Activity() {
         )
         content.addView(
             createFeatureSwitch(
+                titleRes = R.string.block_live_room_qoe_popup_title,
+                summaryRes = R.string.block_live_room_qoe_popup_summary,
+                key = ModuleSettings.KEY_BLOCK_LIVE_ROOM_QOE_POPUP_ENABLED,
+                defaultValue = false,
+            ),
+        )
+        content.addView(
+            createFeatureSwitch(
                 titleRes = R.string.disable_long_press_copy_title,
                 summaryRes = R.string.disable_long_press_copy_summary,
                 key = ModuleSettings.KEY_DISABLE_LONG_PRESS_COPY_ENABLED,

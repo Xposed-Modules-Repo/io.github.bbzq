@@ -27,6 +27,8 @@
 
     <string name="block_live_reservation_title">屏蔽直播预约</string>
     <string name="block_live_reservation_summary">移除视频详情页中的直播预约悬浮卡片。</string>
+    <string name="block_live_room_qoe_popup_title">屏蔽直播间效果打分</string>
+    <string name="block_live_room_qoe_popup_summary">移除直播间里的效果打分 / 体验调研弹窗。</string>
 
     <string name="disable_long_press_copy_title">去除长按复制</string>
     <string name="disable_long_press_copy_summary">禁用长按评论/动态/视频简介后直接复制到剪贴板，减少误触。</string>

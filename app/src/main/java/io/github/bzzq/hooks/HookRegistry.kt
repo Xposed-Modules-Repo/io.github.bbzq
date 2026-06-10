@@ -18,6 +18,7 @@ object HookRegistry {
             VideoFeatureUnlockHook(packageName),
             AutoLikeVideoDetailHook(packageName),
             BlockLiveReservationHook(packageName),
+            BlockLiveRoomQoeHook(packageName),
             LiveQualityHook(packageName),
             StoryVideoAdHook(packageName),
             MiniGameRewardAdHook(packageName),
