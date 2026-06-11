@@ -5,9 +5,13 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
+import android.widget.CompoundButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
@@ -26,62 +30,26 @@ class SettingsContentFactory(
     private var refreshing = false
 
     fun createScrollView(): ScrollView {
-        val content = LinearLayout(context).apply {
+        val page = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
-            setPadding(dp(16), dp(8), dp(16), dp(24))
+            setBackgroundColor(PAGE_BACKGROUND)
+            setPadding(dp(12), dp(12), dp(12), dp(24))
         }
 
-        content.addView(createSectionTitle("账号工具"))
-        accountActionSpecs.forEach { spec ->
-            content.addView(createClickableItem(spec.title, spec.summary, spec.onClick))
-        }
+        page.addView(createSectionLabel("账号工具"))
+        page.addView(createSectionCard(accountToolRows()))
 
-        content.addView(createSectionTitle("通用功能"))
-        generalToggleSpecs.forEach { spec ->
-            content.addView(createFeatureSwitch(spec).also { layout ->
-                val switchView = layout.getChildAt(1) as Switch
-                when (spec.key) {
-                    ModuleSettings.KEY_DISABLE_LONG_PRESS_COPY_ENABLED -> disableLongPressCopySwitch = switchView
-                    ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED -> enhanceLongPressCopySwitch = switchView
-                }
-            })
-        }
+        page.addView(createSectionLabel("通用功能"))
+        page.addView(createSectionCard(generalRows()))
 
-        content.addView(createSectionTitle("竖屏视频净化"))
-        content.addView(createFeatureSwitch(storyToggleSpec).also { layout ->
-            storyVideoAdSwitch = layout.getChildAt(1) as Switch
-        })
-
-        val tagsLayout = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), 0, 0, 0)
-        }
-        storyTagSpecs.forEach { tag ->
-            val checkBox = CheckBox(context).apply {
-                text = tag.label
-                textSize = 15f
-                setTextColor(Color.parseColor("#212121"))
-                setOnCheckedChangeListener { _, _ ->
-                    if (!refreshing) saveSelectedTags()
-                }
-            }
-            tagCheckBoxes[tag.key] = checkBox
-            tagsLayout.addView(checkBox)
-        }
-        content.addView(tagsLayout)
-
-        blockedCountView = TextView(context).apply {
-            textSize = 13f
-            setTextColor(Color.parseColor("#757575"))
-            setPadding(0, dp(12), 0, 0)
-        }
-        content.addView(blockedCountView)
+        page.addView(createSectionLabel("竖屏视频"))
+        page.addView(createSectionCard(storyRows()))
 
         return ScrollView(context).apply {
-            setBackgroundColor(Color.parseColor("#F6F7F8"))
+            setBackgroundColor(PAGE_BACKGROUND)
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             addView(
-                content,
+                page,
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -90,89 +58,208 @@ class SettingsContentFactory(
         }.also { refresh() }
     }
 
-    private fun createSectionTitle(title: String): TextView {
+    private fun accountToolRows(): List<View> {
+        return listOf(
+            createActionRow(
+                title = "复制 access_key",
+                summary = "复制当前登录账号最近一次抓到的 access_key。",
+                actionText = "复制",
+            ) { copyAccessKey() },
+        )
+    }
+
+    private fun generalRows(): List<View> {
+        return listOf(
+            createSwitchRow("跳过开屏广告", "移除启动广告，减少等待时间。", ModuleSettings.KEY_SKIP_SPLASH_AD_ENABLED, true),
+            createSwitchRow("解锁视频功能", "尝试放开部分试看限制和画质能力。", ModuleSettings.KEY_UNLOCK_VIDEO_FEATURES_ENABLED, true),
+            createSwitchRow("视频详情页自动点赞", "进入视频详情页后自动点击点赞按钮。", ModuleSettings.KEY_AUTO_LIKE_VIDEO_DETAIL_ENABLED, false),
+            createSwitchRow("直播画质修复", "修复直播画质链接异常或切换失败的问题。", ModuleSettings.KEY_FIX_LIVE_QUALITY_URL_ENABLED, false),
+            createSwitchRow("跳过小游戏奖励广告", "自动快进或关闭小游戏里的奖励广告。", ModuleSettings.KEY_SKIP_MINI_GAME_REWARD_AD_ENABLED, true),
+            createSwitchRow("屏蔽直播预约", "移除视频详情页里的直播预约卡片。", ModuleSettings.KEY_BLOCK_LIVE_RESERVATION_ENABLED, false),
+            createSwitchRow("屏蔽直播间效果弹窗", "移除直播间里的评分或调研弹窗。", ModuleSettings.KEY_BLOCK_LIVE_ROOM_QOE_POPUP_ENABLED, false),
+            createSwitchRow("去除长按复制", "禁止长按后直接复制到剪贴板，减少误触。", ModuleSettings.KEY_DISABLE_LONG_PRESS_COPY_ENABLED, false) {
+                disableLongPressCopySwitch = it
+            },
+            createSwitchRow("长按自由复制", "需要先开启“去除长按复制”，再弹出可选择文本的窗口。", ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED, false) {
+                enhanceLongPressCopySwitch = it
+            },
+            createSwitchRow("分享净化", "清理分享链接中的追踪参数。", ModuleSettings.KEY_PURIFY_SHARE_ENABLED, false),
+            createSwitchRow("完整数字显示", "在“我的”和空间页显示完整数字，不再缩写成“万”“亿”。", ModuleSettings.KEY_FULL_NUMBER_FORMAT_ENABLED, false),
+            createSwitchRow("评论区 GIF 解锁", "恢复评论区 GIF 缩略图播放并去掉角标。", ModuleSettings.KEY_UNLOCK_COMMENT_GIF_ENABLED, false),
+        )
+    }
+
+    private fun storyRows(): List<View> {
+        val rows = mutableListOf<View>()
+        rows += createSwitchRow("净化竖屏视频广告", "按标签过滤广告、购物和推广内容。", ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_ENABLED, false) {
+            storyVideoAdSwitch = it
+        }
+        rows += createInfoRow("已选标签", "勾选后会一起参与过滤。")
+        rows += createTagGroup()
+        rows += createBlockedCountRow()
+        return rows
+    }
+
+    private fun createSectionLabel(text: String): TextView {
         return TextView(context).apply {
-            text = title
-            textSize = 13f
-            setTextColor(Color.parseColor("#FB7299"))
-            setPadding(0, dp(16), 0, dp(8))
+            this.text = text
+            textSize = 12f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.parseColor("#8C8C91"))
+            setPadding(dp(4), dp(14), dp(4), dp(8))
         }
     }
 
-    private fun createFeatureSwitch(spec: ToggleSpec): LinearLayout {
-        val layout = LinearLayout(context).apply {
+    private fun createSectionCard(rows: List<View>): View {
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(Color.WHITE)
+            }
+            clipToOutline = true
+            rows.forEachIndexed { index, row ->
+                addView(row)
+                if (index != rows.lastIndex) {
+                    addView(createDivider())
+                }
+            }
+        }
+    }
+
+    private fun createDivider(): View {
+        return View(context).apply {
+            setBackgroundColor(Color.parseColor("#F1F2F3"))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(1),
+            ).apply {
+                marginStart = dp(16)
+            }
+        }
+    }
+
+    private fun createInfoRow(title: String, summary: String): View {
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            addView(TextView(context).apply {
+                text = title
+                textSize = 15f
+                setTextColor(TITLE_COLOR)
+            })
+            addView(TextView(context).apply {
+                text = summary
+                textSize = 12f
+                setTextColor(SUMMARY_COLOR)
+                setPadding(0, dp(4), 0, 0)
+            })
+        }
+    }
+
+    private fun createBlockedCountRow(): View {
+        blockedCountView = TextView(context).apply {
+            textSize = 12f
+            setTextColor(SUMMARY_COLOR)
+        }
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            addView(TextView(context).apply {
+                text = "拦截统计"
+                textSize = 15f
+                setTextColor(TITLE_COLOR)
+            })
+            addView(blockedCountView.apply {
+                setPadding(0, dp(4), 0, 0)
+            })
+        }
+    }
+
+    private fun createTagGroup(): View {
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            ModuleSettings.storyVideoAdTags.forEach { tag ->
+                addView(CheckBox(context).apply {
+                    text = tag.label
+                    textSize = 14f
+                    setTextColor(TITLE_COLOR)
+                    setPadding(dp(6), dp(2), dp(6), dp(2))
+                    setOnCheckedChangeListener { _, _ ->
+                        if (!refreshing) saveSelectedTags()
+                    }
+                    tagCheckBoxes[tag.key] = this
+                })
+            }
+        }
+    }
+
+    private fun createActionRow(
+        title: String,
+        summary: String,
+        actionText: String,
+        onClick: () -> Unit,
+    ): View {
+        return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(12), 0, dp(12))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            isClickable = true
+            isFocusable = true
+            setBackgroundResource(selectableBackground())
+            setOnClickListener { onClick() }
+            addView(createTextColumn(title, summary), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(TextView(context).apply {
+                text = actionText
+                textSize = 14f
+                setTextColor(ACCENT_COLOR)
+            })
         }
+    }
 
-        val textLayout = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            setPadding(0, 0, dp(16), 0)
-        }
-
-        textLayout.addView(TextView(context).apply {
-            text = spec.title
-            textSize = 17f
-            setTextColor(Color.parseColor("#212121"))
-        })
-        textLayout.addView(TextView(context).apply {
-            text = spec.summary
-            textSize = 13f
-            setTextColor(Color.parseColor("#757575"))
-            setPadding(0, dp(4), 0, 0)
-        })
-        textLayout.addView(TextView(context).apply {
-            text = if (spec.defaultValue) "默认：开启" else "默认：关闭"
-            textSize = 12f
-            setTextColor(Color.parseColor("#9E9E9E"))
-            setPadding(0, dp(6), 0, 0)
-        })
-
+    private fun createSwitchRow(
+        title: String,
+        summary: String,
+        key: String,
+        defaultValue: Boolean,
+        onSwitchReady: ((Switch) -> Unit)? = null,
+    ): View {
         val switchView = Switch(context).apply {
-            isChecked = prefs.getBoolean(spec.key, spec.defaultValue)
-            setOnCheckedChangeListener { _, isChecked ->
+            isChecked = prefs.getBoolean(key, defaultValue)
+            setOnCheckedChangeListener { _: CompoundButton, isChecked: Boolean ->
                 if (!refreshing) {
-                    prefs.edit().putBoolean(spec.key, isChecked).apply()
-                    if (
-                        spec.key == ModuleSettings.KEY_DISABLE_LONG_PRESS_COPY_ENABLED ||
-                        spec.key == ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED
-                    ) {
+                    prefs.edit().putBoolean(key, isChecked).apply()
+                    if (key == ModuleSettings.KEY_DISABLE_LONG_PRESS_COPY_ENABLED || key == ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED) {
                         refresh()
                     }
                 }
             }
         }
+        onSwitchReady?.invoke(switchView)
 
-        layout.addView(textLayout)
-        layout.addView(switchView)
-        return layout
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            addView(createTextColumn(title, summary), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(switchView)
+        }
     }
 
-    private fun createClickableItem(
-        title: String,
-        summary: String,
-        onClick: SettingsContentFactory.() -> Unit,
-    ): LinearLayout {
+    private fun createTextColumn(title: String, summary: String): View {
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(12), 0, dp(12))
-            isClickable = true
-            val outValue = android.util.TypedValue()
-            context.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
-            setBackgroundResource(outValue.resourceId)
-            setOnClickListener { this@SettingsContentFactory.onClick() }
-
+            setPadding(0, 0, dp(14), 0)
             addView(TextView(context).apply {
                 text = title
-                textSize = 17f
-                setTextColor(Color.parseColor("#212121"))
+                textSize = 15f
+                setTextColor(TITLE_COLOR)
             })
             addView(TextView(context).apply {
                 text = summary
-                textSize = 13f
-                setTextColor(Color.parseColor("#757575"))
+                textSize = 12f
+                setTextColor(SUMMARY_COLOR)
                 setPadding(0, dp(4), 0, 0)
             })
         }
@@ -180,23 +267,27 @@ class SettingsContentFactory(
 
     private fun refresh() {
         refreshing = true
-        val enabled = ModuleSettings.isPurifyStoryVideoAdEnabled(prefs)
+
+        val storyEnabled = ModuleSettings.isPurifyStoryVideoAdEnabled(prefs)
         val selectedTags = ModuleSettings.getPurifyStoryVideoAdTags(prefs)
         val disableLongPressCopy = ModuleSettings.isDisableLongPressCopyEnabled(prefs)
 
-        storyVideoAdSwitch.isChecked = enabled
+        storyVideoAdSwitch.isChecked = storyEnabled
         disableLongPressCopySwitch.isChecked = disableLongPressCopy
         enhanceLongPressCopySwitch.isEnabled = disableLongPressCopy
-        if (!disableLongPressCopy && enhanceLongPressCopySwitch.isChecked) {
+
+        if (!disableLongPressCopy && prefs.getBoolean(ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED, false)) {
             prefs.edit().putBoolean(ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED, false).apply()
         }
         enhanceLongPressCopySwitch.isChecked =
             disableLongPressCopy && ModuleSettings.isEnhanceLongPressCopyEnabled(prefs)
+
         tagCheckBoxes.forEach { (key, checkBox) ->
-            checkBox.isEnabled = enabled
+            checkBox.isEnabled = storyEnabled
             checkBox.isChecked = key in selectedTags
         }
-        blockedCountView.text = "累计拦截：${prefs.getInt(ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_BLOCKED_COUNT, 0)}"
+
+        blockedCountView.text = "累计拦截 ${prefs.getInt(ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_BLOCKED_COUNT, 0)} 条内容"
         refreshing = false
     }
 
@@ -212,76 +303,27 @@ class SettingsContentFactory(
     private fun copyAccessKey() {
         val token = prefs.getString(ModuleSettings.KEY_LAST_ACCESS_KEY, null)
         if (token.isNullOrEmpty()) {
-            Toast.makeText(context, "未找到 access_key，请先登录 Bilibili 并触发一次账号相关请求。", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "未找到 access_key，请先在 Bilibili 内完成一次登录相关请求。", Toast.LENGTH_SHORT).show()
             return
         }
 
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("access_key", token))
-        Toast.makeText(context, "已复制 access_key 到剪贴板。", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "已复制 access_key。", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun selectableBackground(): Int {
+        val outValue = android.util.TypedValue()
+        context.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+        return outValue.resourceId
     }
 
     private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
 
-    private data class ToggleSpec(
-        val key: String,
-        val title: String,
-        val summary: String,
-        val defaultValue: Boolean,
-    )
-
-    private data class ActionSpec(
-        val title: String,
-        val summary: String,
-        val onClick: SettingsContentFactory.() -> Unit,
-    )
-
-    private data class StoryTagSpec(
-        val key: String,
-        val label: String,
-    )
-
     private companion object {
-        private val accountActionSpecs = listOf(
-            ActionSpec(
-                title = "复制 access_key",
-                summary = "复制当前登录账号最近一次捕获到的 access_key。",
-                onClick = SettingsContentFactory::copyAccessKey,
-            ),
-        )
-
-        private val generalToggleSpecs = listOf(
-            ToggleSpec(ModuleSettings.KEY_SKIP_SPLASH_AD_ENABLED, "跳过开屏广告", "移除启动时的开屏广告，加快进入速度。", true),
-            ToggleSpec(ModuleSettings.KEY_UNLOCK_VIDEO_FEATURES_ENABLED, "解锁视频功能", "尝试解锁部分试看限制与会员画质相关能力。", true),
-            ToggleSpec(ModuleSettings.KEY_AUTO_LIKE_VIDEO_DETAIL_ENABLED, "视频详情页自动点赞", "进入视频详情页时自动点击点赞按钮。", false),
-            ToggleSpec(ModuleSettings.KEY_FIX_LIVE_QUALITY_URL_ENABLED, "直播画质 URL 修复", "修复部分版本直播画质切换异常或 URL 错误的问题。", false),
-            ToggleSpec(ModuleSettings.KEY_SKIP_MINI_GAME_REWARD_AD_ENABLED, "跳过小游戏激励广告", "自动快进或关闭小游戏中的激励视频广告。", true),
-            ToggleSpec(ModuleSettings.KEY_BLOCK_LIVE_RESERVATION_ENABLED, "屏蔽直播预约", "移除视频详情页中的直播预约悬浮卡片。", false),
-            ToggleSpec(ModuleSettings.KEY_BLOCK_LIVE_ROOM_QOE_POPUP_ENABLED, "屏蔽直播间效果弹窗", "移除直播间里的效果打分或体验调研弹窗。", false),
-            ToggleSpec(ModuleSettings.KEY_DISABLE_LONG_PRESS_COPY_ENABLED, "去除长按复制", "禁用评论、动态、视频简介等场景里长按后直接复制到剪贴板的行为，减少误触。", false),
-            ToggleSpec(ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED, "长按自由复制", "需先开启“去除长按复制”。覆盖评论、动态、视频简介和部分私信场景，弹出可自由选择的文本窗口。", false),
-            ToggleSpec(ModuleSettings.KEY_PURIFY_SHARE_ENABLED, "分享净化", "净化复制链接和分享文本中的追踪参数，尽量保留分页、评论定位等必要信息。", false),
-            ToggleSpec(ModuleSettings.KEY_FULL_NUMBER_FORMAT_ENABLED, "完整数字显示", "在“我的”和空间页显示完整统计数字，不再缩写成“万”“亿”。", false),
-            ToggleSpec(ModuleSettings.KEY_UNLOCK_COMMENT_GIF_ENABLED, "评论区 GIF 解锁", "恢复评论区 GIF 缩略图播放，并移除图片右上角的大会员专属角标。", false),
-        )
-
-        private val storyToggleSpec = ToggleSpec(
-            ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_ENABLED,
-            "净化竖屏视频广告",
-            "按标签过滤竖屏视频流中的广告、购物和推广内容。",
-            false,
-        )
-
-        private val storyTagSpecs = listOf(
-            StoryTagSpec("ad", "广告"),
-            StoryTagSpec("short", "短剧"),
-            StoryTagSpec("shopping", "购物"),
-            StoryTagSpec("tv", "电视剧"),
-            StoryTagSpec("doc", "纪录片"),
-            StoryTagSpec("ent", "娱乐"),
-            StoryTagSpec("movie", "电影"),
-            StoryTagSpec("music", "音乐"),
-            StoryTagSpec("topic", "话题"),
-        )
+        private val PAGE_BACKGROUND = Color.parseColor("#F6F7F8")
+        private val TITLE_COLOR = Color.parseColor("#18191C")
+        private val SUMMARY_COLOR = Color.parseColor("#9499A0")
+        private val ACCENT_COLOR = Color.parseColor("#FB7299")
     }
 }

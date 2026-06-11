@@ -11,9 +11,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.bzzq.InAppSettingsDialog
 
-/**
- * Injects the settings entrance only while Bilibili's settings page is visible.
- */
 class BiliEntryHook(
     targetPackageName: String,
 ) : BaseHook(targetPackageName) {
@@ -54,20 +51,22 @@ class BiliEntryHook(
     }
 
     private fun attachEntry(activity: Activity, log: (String, Throwable?) -> Unit) {
-        val root = activity.window?.decorView as? ViewGroup ?: return
-        if (!looksLikeSettingsPage(activity, root)) {
-            removeEntry(root, SETTINGS_ENTRY_TAG)
-            removeEntry(root, SETTINGS_OVERLAY_TAG)
+        val contentRoot = activity.findViewById<ViewGroup>(android.R.id.content)
+            ?: activity.window?.decorView as? ViewGroup
+            ?: return
+        if (!looksLikeSettingsPage(activity, contentRoot)) {
+            removeEntry(contentRoot, SETTINGS_ENTRY_TAG)
+            removeEntry(contentRoot, SETTINGS_OVERLAY_TAG)
             return
         }
 
-        val installedInline = installSettingsRow(activity, root, log)
+        val installedInline = installSettingsRow(activity, contentRoot, log)
         if (installedInline) {
-            removeEntry(root, SETTINGS_OVERLAY_TAG)
+            removeEntry(contentRoot, SETTINGS_OVERLAY_TAG)
             return
         }
 
-        installOverlayEntry(activity, root, log)
+        installOverlayEntry(activity, contentRoot, log)
     }
 
     private fun installSettingsRow(activity: Activity, root: ViewGroup, log: (String, Throwable?) -> Unit): Boolean {
@@ -93,9 +92,9 @@ class BiliEntryHook(
         if (root.findViewWithTag<View>(SETTINGS_OVERLAY_TAG) != null) return
 
         val entry = createOverlayEntryView(activity).apply { tag = SETTINGS_OVERLAY_TAG }
-        val container = root as? FrameLayout ?: return
-        container.addView(entry, createOverlayLayoutParams(activity))
-        log("Inserted overlay advanced settings entry for settings page", null)
+        root.addView(entry, createOverlayLayoutParams(activity, root))
+        entry.bringToFront()
+        log("Inserted fallback advanced settings entry for settings page", null)
     }
 
     private fun removeEntry(root: ViewGroup, tag: String) {
@@ -112,12 +111,12 @@ class BiliEntryHook(
         titleLayout.addView(TextView(activity).apply {
             text = ENTRY_TITLE
             textSize = 16f
-            setTextColor(Color.parseColor("#111111"))
+            setTextColor(Color.parseColor("#18191C"))
         })
         titleLayout.addView(TextView(activity).apply {
             text = ENTRY_SUMMARY
             textSize = 13f
-            setTextColor(Color.parseColor("#888888"))
+            setTextColor(Color.parseColor("#9499A0"))
             setPadding(0, dp(activity, 4), 0, 0)
         })
 
@@ -142,31 +141,62 @@ class BiliEntryHook(
     }
 
     private fun createOverlayEntryView(activity: Activity): View {
-        return TextView(activity).apply {
-            text = ENTRY_TITLE
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#FB7299"))
-                cornerRadius = dp(activity, 20).toFloat()
+                setColor(Color.WHITE)
+                cornerRadius = dp(activity, 14).toFloat()
             }
-            setPadding(dp(activity, 16), dp(activity, 10), dp(activity, 16), dp(activity, 10))
-            elevation = dp(activity, 6).toFloat()
+            elevation = dp(activity, 8).toFloat()
+            setPadding(dp(activity, 16), dp(activity, 14), dp(activity, 16), dp(activity, 14))
             isClickable = true
             isFocusable = true
+            addView(
+                LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    addView(TextView(activity).apply {
+                        text = ENTRY_TITLE
+                        textSize = 16f
+                        setTextColor(Color.parseColor("#18191C"))
+                    })
+                    addView(TextView(activity).apply {
+                        text = ENTRY_SUMMARY
+                        textSize = 13f
+                        setTextColor(Color.parseColor("#9499A0"))
+                        setPadding(0, dp(activity, 4), 0, 0)
+                    })
+                },
+            )
+            addView(TextView(activity).apply {
+                text = "进入"
+                textSize = 13f
+                setTextColor(Color.parseColor("#FB7299"))
+            })
             setOnClickListener { showSettingsDialog(activity) { _, _ -> } }
         }
     }
 
-    private fun createOverlayLayoutParams(activity: Activity): FrameLayout.LayoutParams {
-        return FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply {
-            gravity = Gravity.END or Gravity.BOTTOM
-            rightMargin = dp(activity, 16)
-            bottomMargin = dp(activity, 32)
+    private fun createOverlayLayoutParams(activity: Activity, root: ViewGroup): ViewGroup.MarginLayoutParams {
+        val params =
+            if (root is FrameLayout) {
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.TOP
+                }
+            } else {
+                ViewGroup.MarginLayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+            }
+        return params.apply {
+            leftMargin = dp(activity, 12)
+            topMargin = dp(activity, 12)
+            rightMargin = dp(activity, 12)
         }
     }
 
@@ -181,9 +211,15 @@ class BiliEntryHook(
     private fun looksLikeSettingsPage(activity: Activity, root: View): Boolean {
         val className = activity.javaClass.name.lowercase()
         if ("setting" in className || "preference" in className) return true
-        return findTextView(root) { text ->
-            SETTINGS_MARKERS.any { marker -> text.contains(marker) }
-        } != null
+        if (activity.javaClass.name.startsWith(SETTINGS_PACKAGE_PREFIX)) return true
+
+        val matchedMarkers = SETTINGS_MARKERS.count { marker ->
+            findTextView(root) { text -> text.contains(marker) } != null
+        }
+        if (matchedMarkers >= 2) return true
+        if (matchedMarkers >= 1 && findTextView(root) { text -> text.contains("设置") } != null) return true
+
+        return findAnchorRow(root) != null
     }
 
     private fun findAnchorRow(view: View): View? {
@@ -204,11 +240,9 @@ class BiliEntryHook(
 
     private fun findBestSettingsContainer(view: View): ViewGroup? {
         if (view !is ViewGroup) return null
-
         if (view.isVerticalContainer() && view.childCount >= 2 && countTextDrivenChildren(view) >= 2) {
             return view
         }
-
         for (index in 0 until view.childCount) {
             findBestSettingsContainer(view.getChildAt(index))?.let { return it }
         }
@@ -255,14 +289,15 @@ class BiliEntryHook(
     private companion object {
         private const val ENTRY_TITLE = "高级设置"
         private const val ENTRY_SUMMARY = "bzzq 模块设置"
+        private const val SETTINGS_PACKAGE_PREFIX = "com.bilibili.app.comm.setting."
 
-        private val ATTACH_DELAYS_MS = longArrayOf(0L, 120L, 360L, 720L)
+        private val ATTACH_DELAYS_MS = longArrayOf(0L, 120L, 360L, 720L, 1200L, 2000L)
         private val SETTINGS_MARKERS = listOf(
-            "设置",
             "关于",
             "清理缓存",
             "推荐设置",
             "隐私权限设置",
+            "青少年守护",
         )
         private val ANCHOR_TEXTS = listOf(
             "关于哔哩哔哩",
