@@ -8,59 +8,105 @@ import java.lang.ref.WeakReference
 import java.lang.reflect.Method
 
 class ModuleSettingsBridge private constructor() : SharedPreferences {
-    override fun getAll(): MutableMap<String, *> = mutableMapOf<String, Any?>(
-        ModuleSettings.KEY_SKIP_SPLASH_AD_ENABLED to getBoolean(ModuleSettings.KEY_SKIP_SPLASH_AD_ENABLED, true),
-        ModuleSettings.KEY_UNLOCK_VIDEO_FEATURES_ENABLED to getBoolean(ModuleSettings.KEY_UNLOCK_VIDEO_FEATURES_ENABLED, true),
-        ModuleSettings.KEY_AUTO_LIKE_VIDEO_DETAIL_ENABLED to getBoolean(ModuleSettings.KEY_AUTO_LIKE_VIDEO_DETAIL_ENABLED, false),
-        ModuleSettings.KEY_FIX_LIVE_QUALITY_URL_ENABLED to getBoolean(ModuleSettings.KEY_FIX_LIVE_QUALITY_URL_ENABLED, false),
-        ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_ENABLED to getBoolean(ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_ENABLED, false),
-        ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_TAGS to getStringSet(
-            ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_TAGS,
-            ModuleSettings.defaultStoryVideoAdTags.toMutableSet(),
-        ),
-        ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_BLOCKED_COUNT to getInt(ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_BLOCKED_COUNT, 0),
-        ModuleSettings.KEY_SKIP_MINI_GAME_REWARD_AD_ENABLED to getBoolean(ModuleSettings.KEY_SKIP_MINI_GAME_REWARD_AD_ENABLED, true),
-        ModuleSettings.KEY_BLOCK_LIVE_RESERVATION_ENABLED to getBoolean(ModuleSettings.KEY_BLOCK_LIVE_RESERVATION_ENABLED, false),
-        ModuleSettings.KEY_BLOCK_LIVE_ROOM_QOE_POPUP_ENABLED to getBoolean(ModuleSettings.KEY_BLOCK_LIVE_ROOM_QOE_POPUP_ENABLED, false),
-        ModuleSettings.KEY_DISABLE_LONG_PRESS_COPY_ENABLED to getBoolean(ModuleSettings.KEY_DISABLE_LONG_PRESS_COPY_ENABLED, false),
-        ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED to getBoolean(ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED, false),
-        ModuleSettings.KEY_PURIFY_SHARE_ENABLED to getBoolean(ModuleSettings.KEY_PURIFY_SHARE_ENABLED, false),
-        ModuleSettings.KEY_FULL_NUMBER_FORMAT_ENABLED to getBoolean(ModuleSettings.KEY_FULL_NUMBER_FORMAT_ENABLED, false),
-        ModuleSettings.KEY_UNLOCK_COMMENT_GIF_ENABLED to getBoolean(ModuleSettings.KEY_UNLOCK_COMMENT_GIF_ENABLED, false),
-        ModuleSettings.KEY_LAST_ACCESS_KEY to getString(ModuleSettings.KEY_LAST_ACCESS_KEY, null),
+    private var localCache: Map<String, Any> = emptyMap()
+    private var lastLoadTime: Long = 0
+
+    private fun ensureLoaded() {
+        val now = System.currentTimeMillis()
+        if (now - lastLoadTime < CACHE_EXPIRATION && localCache.isNotEmpty()) return
+        
+        resolveContentResolver()?.let { resolver ->
+            val context = resolver.resolveContext()
+            val loaded = JsonSettingsStore.load(context)
+            if (loaded.isNotEmpty()) {
+                localCache = loaded
+            } else {
+                // First run or missing JSON, sync from provider
+                val all = mutableMapOf<String, Any>()
+                getAllFromProvider().forEach { (k, v) ->
+                    if (v != null) all[k] = v
+                }
+                localCache = all
+                Thread { JsonSettingsStore.save(context, all) }.start()
+            }
+            lastLoadTime = now
+        }
+    }
+
+    private fun getAllFromProvider(): Map<String, Any?> {
+        val result = call(ModuleSettingsProvider.METHOD_GET_ALL, null, null)
+        val map = mutableMapOf<String, Any?>()
+        result?.keySet()?.forEach { key ->
+            map[key] = result.get(key)
+        }
+        return if (map.isNotEmpty()) map else fallbackDefaults()
+    }
+
+    private fun fallbackDefaults(): Map<String, Any?> = mapOf(
+        ModuleSettings.KEY_SKIP_SPLASH_AD_ENABLED to true,
+        ModuleSettings.KEY_UNLOCK_VIDEO_FEATURES_ENABLED to true,
+        ModuleSettings.KEY_FULL_NUMBER_FORMAT_ENABLED to false
     )
 
+    private fun ContentResolver.resolveContext(): android.content.Context {
+        return cachedApplication.get() ?: (currentApplicationMethod.invoke(null) as android.app.Application)
+    }
+
+    override fun getAll(): MutableMap<String, *> {
+        ensureLoaded()
+        return localCache.toMutableMap()
+    }
+
     override fun getString(key: String?, defValue: String?): String? {
-        val result = call(ModuleSettingsProvider.METHOD_GET_STRING, key, Bundle().apply {
-            putString(ModuleSettingsProvider.EXTRA_DEFAULT, defValue)
-        })
-        return result?.getString(ModuleSettingsProvider.EXTRA_VALUE, defValue)
+        ensureLoaded()
+        return (localCache[key] as? String) ?: run {
+            val result = call(ModuleSettingsProvider.METHOD_GET_STRING, key, Bundle().apply {
+                putString(ModuleSettingsProvider.EXTRA_DEFAULT, defValue)
+            })
+            result?.getString(ModuleSettingsProvider.EXTRA_VALUE, defValue)
+        }
     }
 
     override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? {
-        val result = call(ModuleSettingsProvider.METHOD_GET_STRING_SET, key, Bundle().apply {
-            putStringArrayList(ModuleSettingsProvider.EXTRA_DEFAULT, ArrayList(defValues.orEmpty()))
-        })
-        return result?.getStringArrayList(ModuleSettingsProvider.EXTRA_VALUE)?.toMutableSet()
-            ?: defValues
+        ensureLoaded()
+        // JSON doesn't support Set directly, it's stored as JSONArray/List
+        return (localCache[key] as? List<*>)?.map { it.toString() }?.toMutableSet() ?: run {
+            val result = call(ModuleSettingsProvider.METHOD_GET_STRING_SET, key, Bundle().apply {
+                putStringArrayList(ModuleSettingsProvider.EXTRA_DEFAULT, ArrayList(defValues.orEmpty()))
+            })
+            result?.getStringArrayList(ModuleSettingsProvider.EXTRA_VALUE)?.toMutableSet()
+                ?: defValues
+        }
     }
 
     override fun getInt(key: String?, defValue: Int): Int {
-        val result = call(ModuleSettingsProvider.METHOD_GET_INT, key, Bundle().apply {
-            putInt(ModuleSettingsProvider.EXTRA_DEFAULT, defValue)
-        })
-        return result?.getInt(ModuleSettingsProvider.EXTRA_VALUE, defValue) ?: defValue
+        ensureLoaded()
+        return (localCache[key] as? Number)?.toInt() ?: run {
+            val result = call(ModuleSettingsProvider.METHOD_GET_INT, key, Bundle().apply {
+                putInt(ModuleSettingsProvider.EXTRA_DEFAULT, defValue)
+            })
+            result?.getInt(ModuleSettingsProvider.EXTRA_VALUE, defValue) ?: defValue
+        }
     }
 
-    override fun getLong(key: String?, defValue: Long): Long = defValue
+    override fun getLong(key: String?, defValue: Long): Long {
+        ensureLoaded()
+        return (localCache[key] as? Number)?.toLong() ?: defValue
+    }
 
-    override fun getFloat(key: String?, defValue: Float): Float = defValue
+    override fun getFloat(key: String?, defValue: Float): Float {
+        ensureLoaded()
+        return (localCache[key] as? Number)?.toFloat() ?: defValue
+    }
 
     override fun getBoolean(key: String?, defValue: Boolean): Boolean {
-        val result = call(ModuleSettingsProvider.METHOD_GET_BOOLEAN, key, Bundle().apply {
-            putBoolean(ModuleSettingsProvider.EXTRA_DEFAULT, defValue)
-        })
-        return result?.getBoolean(ModuleSettingsProvider.EXTRA_VALUE, defValue) ?: defValue
+        ensureLoaded()
+        return (localCache[key] as? Boolean) ?: run {
+            val result = call(ModuleSettingsProvider.METHOD_GET_BOOLEAN, key, Bundle().apply {
+                putBoolean(ModuleSettingsProvider.EXTRA_DEFAULT, defValue)
+            })
+            result?.getBoolean(ModuleSettingsProvider.EXTRA_VALUE, defValue) ?: defValue
+        }
     }
 
     override fun contains(key: String?): Boolean {
@@ -149,10 +195,26 @@ class ModuleSettingsBridge private constructor() : SharedPreferences {
             operations.forEach { it.invoke() }
             operations.clear()
             clearRequested = false
+
+            // Save to JSON for robust cross-process settings sync
+            val resolver = resolveContentResolver()
+            if (resolver != null) {
+                val context = resolver.resolveContext()
+                val all = getAll()
+                @Suppress("UNCHECKED_CAST")
+                localCache = all as Map<String, Any>
+                lastLoadTime = System.currentTimeMillis()
+                
+                // Perform disk write in background
+                Thread {
+                    JsonSettingsStore.save(context, localCache)
+                }.start()
+            }
         }
     }
 
     companion object {
+        private const val CACHE_EXPIRATION = 5000L // 5 seconds
         private var cachedApplication = WeakReference<Application>(null)
         private val currentApplicationMethod: Method by lazy(LazyThreadSafetyMode.NONE) {
             Class.forName("android.app.ActivityThread")

@@ -114,7 +114,7 @@ class BiliEntryHook(
     private companion object {
         private const val ENTRY_KEY = "bzzq_advanced_settings"
         private const val ENTRY_TITLE = "\u9ad8\u7ea7\u8bbe\u7f6e"
-        private const val ENTRY_SUMMARY = "BiliVIPhz \u6a21\u5757\u8bbe\u7f6e"
+        private const val ENTRY_SUMMARY = "BBZQ 模块设置"
 
         private val TARGET_GROUP_KEYS = arrayOf(
             "pref_key_tools_setting",

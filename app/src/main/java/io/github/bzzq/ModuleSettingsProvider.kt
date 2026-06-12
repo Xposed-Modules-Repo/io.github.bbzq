@@ -49,6 +49,18 @@ class ModuleSettingsProvider : ContentProvider() {
                 Bundle.EMPTY
             }
             METHOD_CONTAINS -> bundleOfBoolean(prefs.contains(requireKey(arg)))
+            METHOD_GET_ALL -> Bundle().apply {
+                prefs.all.forEach { (k, v) ->
+                    when (v) {
+                        is Boolean -> putBoolean(k, v)
+                        is Int -> putInt(k, v)
+                        is Long -> putLong(k, v)
+                        is Float -> putFloat(k, v)
+                        is String -> putString(k, v)
+                        is Set<*> -> putStringArrayList(k, ArrayList(v.map { it.toString() }))
+                    }
+                }
+            }
             else -> throw IllegalArgumentException("Unsupported method: $method")
         }
     }
@@ -111,6 +123,7 @@ class ModuleSettingsProvider : ContentProvider() {
         @JvmField val METHOD_PUT_STRING_SET = "putStringSet"
         @JvmField val METHOD_REMOVE = "remove"
         @JvmField val METHOD_CONTAINS = "contains"
+        @JvmField val METHOD_GET_ALL = "getAll"
 
         @JvmField val EXTRA_DEFAULT = "default"
         @JvmField val EXTRA_VALUE = "value"
