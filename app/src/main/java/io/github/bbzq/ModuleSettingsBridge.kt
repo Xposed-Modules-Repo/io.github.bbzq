@@ -133,8 +133,16 @@ class ModuleSettingsBridge private constructor() : SharedPreferences {
         listener: SharedPreferences.OnSharedPreferenceChangeListener?,
     ) = Unit
 
-    private fun call(method: String, arg: String?, extras: Bundle?): Bundle? =
-        resolveContentResolver()?.call(ModuleSettingsProvider.CONTENT_URI, method, arg, extras)
+    private fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
+        val resolver = resolveContentResolver() ?: return null
+        return try {
+            resolver.call(ModuleSettingsProvider.CONTENT_URI, method, arg, extras)
+        } catch (_: IllegalArgumentException) {
+            null
+        } catch (_: SecurityException) {
+            null
+        }
+    }
 
     private fun resolveContentResolver(): ContentResolver? {
         cachedApplication.get()?.let { return it.contentResolver }
