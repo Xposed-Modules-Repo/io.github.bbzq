@@ -20,6 +20,8 @@ class SettingsContentFactory(
     private val prefs: SharedPreferences,
 ) {
     private val tagCheckBoxes = mutableMapOf<String, CheckBox>()
+    private lateinit var disableLongPressCopySwitch: Switch
+    private lateinit var enhanceLongPressCopySwitch: Switch
     private lateinit var storyVideoAdSwitch: Switch
     private lateinit var blockedCountView: TextView
     private var refreshing = false
@@ -33,6 +35,9 @@ class SettingsContentFactory(
 
         page.addView(createSectionLabel("分享与链接"))
         page.addView(createSectionCard(shareRows()))
+
+        page.addView(createSectionLabel("复制增强"))
+        page.addView(createSectionCard(copyRows()))
 
         page.addView(createSectionLabel("启动净化"))
         page.addView(createSectionCard(startupRows()))
@@ -70,6 +75,27 @@ class SettingsContentFactory(
                 ModuleSettings.KEY_MINI_PROGRAM_ENABLED,
                 false,
             ),
+        )
+    }
+
+    private fun copyRows(): List<View> {
+        return listOf(
+            createSwitchRow(
+                "去除长按复制",
+                "禁用评论、动态、视频简介等场景里长按后直接复制到剪贴板的行为，减少误触。",
+                ModuleSettings.KEY_DISABLE_LONG_PRESS_COPY_ENABLED,
+                false,
+            ) {
+                disableLongPressCopySwitch = it
+            },
+            createSwitchRow(
+                "长按自由复制",
+                "需先开启“去除长按复制”，长按文本时才会弹出可自由选择的文本窗口。",
+                ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED,
+                false,
+            ) {
+                enhanceLongPressCopySwitch = it
+            },
         )
     }
 
@@ -218,7 +244,9 @@ class SettingsContentFactory(
             setOnCheckedChangeListener { _: CompoundButton, isChecked: Boolean ->
                 if (!refreshing) {
                     prefs.edit().putBoolean(key, isChecked).apply()
-                    if (key == ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_ENABLED) {
+                    if (key == ModuleSettings.KEY_PURIFY_STORY_VIDEO_AD_ENABLED ||
+                        key == ModuleSettings.KEY_DISABLE_LONG_PRESS_COPY_ENABLED
+                    ) {
                         refresh()
                     }
                 }
@@ -258,6 +286,16 @@ class SettingsContentFactory(
 
         val storyEnabled = ModuleSettings.isPurifyStoryVideoAdEnabled(prefs)
         val selectedTags = ModuleSettings.getPurifyStoryVideoAdTags(prefs)
+        val copyBaseEnabled = ModuleSettings.isDisableLongPressCopyEnabled(prefs)
+        val copyEnhanceEnabled = copyBaseEnabled && ModuleSettings.isEnhanceLongPressCopyEnabled(prefs)
+
+        if (!copyBaseEnabled && prefs.getBoolean(ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED, false)) {
+            prefs.edit().putBoolean(ModuleSettings.KEY_ENHANCE_LONG_PRESS_COPY_ENABLED, false).apply()
+        }
+
+        disableLongPressCopySwitch.isChecked = copyBaseEnabled
+        enhanceLongPressCopySwitch.isEnabled = copyBaseEnabled
+        enhanceLongPressCopySwitch.isChecked = copyEnhanceEnabled
 
         storyVideoAdSwitch.isChecked = storyEnabled
         tagCheckBoxes.forEach { (key, checkBox) ->
