@@ -15,25 +15,31 @@ class ModuleSettingsBridge private constructor() : SharedPreferences {
     private var localCache: Map<String, Any> = emptyMap()
     private var lastLoadTime = 0L
     private var providerUnavailable = false
+    private var hasAuthoritativeSnapshot = false
 
     private fun ensureLoaded() {
         val now = System.currentTimeMillis()
         synchronized(cacheLock) {
             if (localCache.isNotEmpty() && now - lastLoadTime < CACHE_EXPIRATION) return
-            val loaded = getAllFromSources()
+            val source = getAllFromSources()
+            val loaded = source.values
                 .mapNotNull { (key, value) -> value?.let { key to it } }
                 .toMap()
             if (loaded.isNotEmpty()) localCache = loaded
+            hasAuthoritativeSnapshot = source.authoritative
             lastLoadTime = now
         }
     }
 
-    private fun getAllFromSources(): Map<String, Any?> =
-        getAllFromRemotePreferences().ifEmpty {
-            getAllFromXSharedPreferences().ifEmpty {
-                getAllFromProvider().ifEmpty { fallbackDefaults() }
-            }
-        }
+    private fun getAllFromSources(): SettingsSource {
+        val remote = getAllFromRemotePreferences()
+        if (remote.isNotEmpty()) return SettingsSource(remote, authoritative = true)
+        val xshared = getAllFromXSharedPreferences()
+        if (xshared.isNotEmpty()) return SettingsSource(xshared, authoritative = true)
+        val provider = getAllFromProvider()
+        if (provider.isNotEmpty()) return SettingsSource(provider, authoritative = true)
+        return SettingsSource(fallbackDefaults(), authoritative = false)
+    }
 
     private fun getAllFromRemotePreferences(): Map<String, Any?> =
         runCatching {
@@ -80,6 +86,7 @@ class ModuleSettingsBridge private constructor() : SharedPreferences {
     override fun getString(key: String?, defValue: String?): String? {
         ensureLoaded()
         return synchronized(cacheLock) { localCache[key] as? String } ?: run {
+            if (hasAuthoritativeSnapshot) return defValue
             if (providerUnavailable) return defValue
             val result = call(
                 ModuleSettingsProvider.METHOD_GET_STRING,
@@ -99,6 +106,7 @@ class ModuleSettingsBridge private constructor() : SharedPreferences {
             else -> null
         }
         if (cachedSet != null) return cachedSet
+        if (hasAuthoritativeSnapshot) return defValues
         if (providerUnavailable) return defValues
 
         val result = call(
@@ -115,6 +123,7 @@ class ModuleSettingsBridge private constructor() : SharedPreferences {
     override fun getInt(key: String?, defValue: Int): Int {
         ensureLoaded()
         return (synchronized(cacheLock) { localCache[key] } as? Number)?.toInt() ?: run {
+            if (hasAuthoritativeSnapshot) return defValue
             if (providerUnavailable) return defValue
             val result = call(
                 ModuleSettingsProvider.METHOD_GET_INT,
@@ -146,6 +155,7 @@ class ModuleSettingsBridge private constructor() : SharedPreferences {
     override fun getBoolean(key: String?, defValue: Boolean): Boolean {
         ensureLoaded()
         return (synchronized(cacheLock) { localCache[key] } as? Boolean) ?: run {
+            if (hasAuthoritativeSnapshot) return defValue
             if (providerUnavailable) return defValue
             val result = call(
                 ModuleSettingsProvider.METHOD_GET_BOOLEAN,
@@ -159,6 +169,7 @@ class ModuleSettingsBridge private constructor() : SharedPreferences {
     override fun contains(key: String?): Boolean {
         ensureLoaded()
         if (synchronized(cacheLock) { localCache.containsKey(key) }) return true
+        if (hasAuthoritativeSnapshot) return false
         if (providerUnavailable) return false
         val result = call(ModuleSettingsProvider.METHOD_CONTAINS, key, null)
         return result?.getBoolean(ModuleSettingsProvider.EXTRA_VALUE, false) ?: false
@@ -314,7 +325,7 @@ class ModuleSettingsBridge private constructor() : SharedPreferences {
 
         override fun apply() {
             if (clearRequested) {
-                getAllFromSources().keys.forEach { key ->
+                getAllFromSources().values.keys.forEach { key ->
                     call(ModuleSettingsProvider.METHOD_REMOVE, key, null)
                 }
             }
@@ -356,4 +367,9 @@ class ModuleSettingsBridge private constructor() : SharedPreferences {
             ModuleSettingsBridge()
         }
     }
+
+    private data class SettingsSource(
+        val values: Map<String, Any?>,
+        val authoritative: Boolean,
+    )
 }

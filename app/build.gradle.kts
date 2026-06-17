@@ -42,7 +42,7 @@ apktransform {
 
 android {
     namespace = "io.github.bbzq"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.bbzq"
@@ -88,5 +88,6 @@ configurations.all {
 dependencies {
     compileOnly(libs.libxposed.api)
     compileOnly(libs.xposed.api)
+    implementation(libs.libxposed.service)
     implementation(libs.okhttp)
 }
