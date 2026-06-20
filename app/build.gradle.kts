@@ -81,6 +81,7 @@ android {
         targetSdk = 37
         versionCode = releaseCode
         versionName = "v${releaseName}-${releaseCode}"
+        buildConfigField("String", "RELEASE_NAME", "\"$releaseName\"")
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -92,6 +93,9 @@ android {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+    }
+    buildFeatures {
+        buildConfig = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21

@@ -1,5 +1,6 @@
-﻿package io.github.bbzq.feats
+package io.github.bbzq.feats
 
+import io.github.bbzq.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -33,7 +34,7 @@ class BilibiliSponsorBlock(
             .header("accept", "application/json")
             .header("origin", REQUEST_ORIGIN)
             .header("user-agent", USER_AGENT)
-            .header("x-ext-version", EXT_VERSION)
+            .header("x-ext-version", BuildConfig.RELEASE_NAME)
             .build()
 
         val result = fetchSegments(request, trimmedBvid)
@@ -193,10 +194,9 @@ class BilibiliSponsorBlock(
         private const val ACTION_SKIP = "skip"
         private const val BASE_URL = "https://bsbsb.top/api/skipSegments/"
         private const val CACHE_TTL_MS = 5 * 60 * 1000L
-        private const val EXT_VERSION = "1.0.0"
         private const val HASH_PREFIX_LENGTH = 4
-        private const val REQUEST_ORIGIN = "NkBe"
-        private const val USER_AGENT = "BBZQ/1.0"
+        private const val REQUEST_ORIGIN = "BBZQ"
+        private const val USER_AGENT = "Mozilla/5.0 (Linux; Android; Xposed; NkBe) BBZQ/1.0"
 
         private val cache = ConcurrentHashMap<String, CacheEntry>()
 
