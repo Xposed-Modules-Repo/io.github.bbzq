@@ -1,11 +1,11 @@
 package io.github.bbzq.feats.hook
 
 import android.view.View
-import android.view.ViewGroup
 import io.github.bbzq.ModuleSettings
 import io.github.bbzq.feats.BaseRoamingHook
 import io.github.bbzq.feats.callMethod
 import io.github.bbzq.feats.from
+import io.github.bbzq.feats.hookAfterMethod
 import io.github.bbzq.feats.hookAfterAllMethods
 
 class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingHook(env) {
@@ -20,10 +20,10 @@ class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingH
         }
 
         var count = 0
-        count += env.hookAfterAllMethods(fragmentClass, "onResume") { param ->
+        count += env.hookAfterAllMethods(fragmentClass, "onViewCreated") { param ->
             processFragment(param.thisObject)
         }
-        count += env.hookAfterAllMethods(fragmentClass, "onViewCreated") { param ->
+        count += env.hookAfterMethod(fragmentClass, "onHiddenChanged", Boolean::class.javaPrimitiveType!!) { param ->
             processFragment(param.thisObject)
         }
 
@@ -36,35 +36,39 @@ class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingH
 
     private fun processFragment(fragment: Any?) {
         if (fragment == null) return
-        val root = fragment.callMethod("getView") as? View ?: return
-        if (!containsRecyclerView(root, 0)) return
-        val className = fragment.javaClass.name
-        if (!isCandidateComponent(fragment, className)) return
+        val component = resolveHomeComponent(fragment) ?: return
+        val root = component.callMethod("getView") as? View ?: return
+        val className = component.javaClass.name
+        if (!isCandidateComponent(className)) return
 
         saveKnownComponent(className)
-        if (!shouldHide(className)) return
-
-        hideRecyclerViews(root)
         attachPersistentHider(root, className)
+        applyVisibility(root, className)
     }
 
-    private fun isCandidateComponent(fragment: Any, className: String): Boolean {
+    private fun resolveHomeComponent(fragment: Any): Any? {
+        var current: Any? = fragment
+        var parent = fragment.callMethod("getParentFragment")
+        var guard = 0
+        while (current != null && parent != null && guard < 20) {
+            guard += 1
+            if (isHomeContainer(parent)) return current
+            current = parent
+            parent = current.callMethod("getParentFragment")
+        }
+        return null
+    }
+
+    private fun isCandidateComponent(className: String): Boolean {
         if (!className.startsWith("com.bilibili") && !className.startsWith("tv.danmaku")) return false
         val classNameLower = className.lowercase()
         if (EXCLUDED_KEYWORDS.any(classNameLower::contains)) return false
-        return isUnderHomeContainer(fragment)
+        return true
     }
 
-    private fun isUnderHomeContainer(fragment: Any): Boolean {
-        var current = fragment.callMethod("getParentFragment")
-        var guard = 0
-        while (current != null && guard < 20) {
-            guard += 1
-            val name = current.javaClass.name.lowercase()
-            if (HOME_CONTAINER_KEYWORDS.any(name::contains)) return true
-            current = current.callMethod("getParentFragment")
-        }
-        return false
+    private fun isHomeContainer(fragment: Any): Boolean {
+        val name = fragment.javaClass.name.lowercase()
+        return HOME_CONTAINER_KEYWORDS.any(name::contains)
     }
 
     private fun shouldHide(className: String): Boolean {
@@ -99,8 +103,7 @@ class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingH
     private fun attachPersistentHider(root: View, className: String) {
         if (root.getTag(LISTENER_TAG_KEY) != null) return
         val listener = android.view.ViewTreeObserver.OnGlobalLayoutListener {
-            if (!shouldHide(className)) return@OnGlobalLayoutListener
-            hideRecyclerViews(root)
+            applyVisibility(root, className)
         }
         runCatching {
             root.viewTreeObserver?.addOnGlobalLayoutListener(listener)
@@ -110,40 +113,8 @@ class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingH
         }
     }
 
-    private fun hideRecyclerViews(root: View) {
-        val targets = ArrayList<View>()
-        collectRecyclerViews(root, 0, targets)
-        targets.forEach { view ->
-            if (view.visibility != View.GONE) {
-                view.visibility = View.GONE
-            }
-        }
-    }
-
-    private fun containsRecyclerView(view: View, depth: Int): Boolean {
-        if (depth > MAX_TREE_DEPTH) return false
-        if (view.javaClass.name.contains(RECYCLER_VIEW_KEYWORD)) return true
-        if (view is ViewGroup) {
-            for (index in 0 until view.childCount) {
-                val child = view.getChildAt(index) ?: continue
-                if (containsRecyclerView(child, depth + 1)) return true
-            }
-        }
-        return false
-    }
-
-    private fun collectRecyclerViews(view: View, depth: Int, out: MutableList<View>) {
-        if (depth > MAX_TREE_DEPTH) return
-        if (view.javaClass.name.contains(RECYCLER_VIEW_KEYWORD)) {
-            out += view
-            return
-        }
-        if (view is ViewGroup) {
-            for (index in 0 until view.childCount) {
-                val child = view.getChildAt(index) ?: continue
-                collectRecyclerViews(child, depth + 1, out)
-            }
-        }
+    private fun applyVisibility(root: View, className: String) {
+        root.visibility = if (shouldHide(className)) View.GONE else View.VISIBLE
     }
 
     private fun encodeComponent(order: Int, name: String, className: String): String =
@@ -167,8 +138,6 @@ class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingH
 
     private companion object {
         private const val ANDROIDX_FRAGMENT = "androidx.fragment.app.Fragment"
-        private const val RECYCLER_VIEW_KEYWORD = "RecyclerView"
-        private const val MAX_TREE_DEPTH = 40
         private const val LISTENER_TAG_KEY = 0x7F0B1120
         private val HOME_CONTAINER_KEYWORDS = listOf(
             "main2.homefragment",

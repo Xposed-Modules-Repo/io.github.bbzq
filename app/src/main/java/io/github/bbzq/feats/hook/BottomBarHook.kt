@@ -6,16 +6,12 @@ import io.github.bbzq.feats.RoamingEnv
 import io.github.bbzq.feats.from
 import io.github.bbzq.feats.getObjectField
 import io.github.bbzq.feats.hookAfter
-import io.github.bbzq.feats.methodsNamed
+import io.github.bbzq.feats.methodOrNull
 import java.lang.reflect.Method
-import java.lang.reflect.Modifier
 
 class BottomBarHook(env: RoamingEnv) : BaseRoamingHook(env) {
     override fun startHook() {
-        val parserMethods = buildList {
-            addAll(findGsonParsers())
-            addAll(findFastJsonParsers())
-        }.distinctBy(Method::toGenericString)
+        val parserMethods = findParserMethods()
 
         parserMethods.forEach { method ->
             env.hookAfter(method) { param ->
@@ -33,23 +29,73 @@ class BottomBarHook(env: RoamingEnv) : BaseRoamingHook(env) {
         }
     }
 
-    private fun findGsonParsers(): List<Method> {
-        val gson = "com.google.gson.Gson".from(classLoader) ?: return emptyList()
-        return gson.methodsNamed("fromJson")
-            .filter { !Modifier.isAbstract(it.modifiers) && it.returnType != Void.TYPE }
-            .toList()
+    private fun findParserMethods(): List<Method> = buildList {
+        addFastJsonMethod(
+            className = "com.alibaba.fastjson.JSON",
+            methodName = "parseObject",
+            parameterTypeNames = arrayOf(
+                "java.lang.String",
+                "java.lang.reflect.Type",
+                "int",
+                "[Lcom.alibaba.fastjson.parser.Feature;",
+            ),
+        )
+        addFastJsonMethod(
+            className = "com.alibaba.fastjson2.JSON",
+            methodName = "parseObject",
+            parameterTypeNames = arrayOf(
+                "java.lang.String",
+                "java.lang.reflect.Type",
+                "[Lcom.alibaba.fastjson2.JSONReader\$Feature;",
+            ),
+        )
+        addGsonMethod(
+            methodName = "fromJson",
+            parameterTypeNames = arrayOf(
+                "java.lang.String",
+                "java.lang.reflect.Type",
+            ),
+        )
+        addGsonMethod(
+            methodName = "fromJson",
+            parameterTypeNames = arrayOf(
+                "java.io.Reader",
+                "java.lang.reflect.Type",
+            ),
+        )
+    }.distinctBy(Method::toGenericString)
+
+    private fun MutableList<Method>.addFastJsonMethod(
+        className: String,
+        methodName: String,
+        parameterTypeNames: Array<String>,
+    ) {
+        val parameterTypes = resolveParameterTypes(parameterTypeNames) ?: return
+        val method = className.from(classLoader)
+            ?.methodOrNull(methodName, *parameterTypes)
+            ?: return
+        add(method)
     }
 
-    private fun findFastJsonParsers(): List<Method> {
-        val json = FAST_JSON_CLASSES.firstNotNullOfOrNull { it.from(classLoader) }
-            ?: return emptyList()
-        return json.methodsNamed(null)
-            .filter {
-                Modifier.isStatic(it.modifiers) &&
-                    it.name in FAST_JSON_PARSE_METHODS &&
-                    it.returnType != Void.TYPE
-            }
-            .toList()
+    private fun MutableList<Method>.addGsonMethod(
+        methodName: String,
+        parameterTypeNames: Array<String>,
+    ) {
+        val parameterTypes = resolveParameterTypes(parameterTypeNames) ?: return
+        val method = "com.google.gson.Gson".from(classLoader)
+            ?.methodOrNull(methodName, *parameterTypes)
+            ?: return
+        add(method)
+    }
+
+    private fun resolveParameterTypes(typeNames: Array<String>): Array<Class<*>>? =
+        typeNames.map(::resolveParameterType).takeIf { it.none { type -> type == null } }
+            ?.filterNotNull()
+            ?.toTypedArray()
+
+    private fun resolveParameterType(typeName: String): Class<*>? = when (typeName) {
+        "int" -> Int::class.javaPrimitiveType
+        else -> typeName.from(classLoader)
     }
 
     private fun dispatch(rawResult: Any?) {
@@ -132,11 +178,6 @@ class BottomBarHook(env: RoamingEnv) : BaseRoamingHook(env) {
 
     private companion object {
         private const val ITEM_SEPARATOR = "\t"
-        private val FAST_JSON_CLASSES = arrayOf(
-            "com.alibaba.fastjson.JSON",
-            "com.alibaba.fastjson2.JSON",
-        )
-        private val FAST_JSON_PARSE_METHODS = setOf("parse", "parseObject")
         private val TAB_RESPONSE_CLASSES = setOf(
             "tv.danmaku.bili.ui.main2.resource.MainResourceManager\$TabResponse",
             "tv.danmaku.p9138bili.p9228ui.main2.resource.MainResourceManager\$TabResponse",
