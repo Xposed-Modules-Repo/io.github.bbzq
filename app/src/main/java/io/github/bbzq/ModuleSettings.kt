@@ -19,6 +19,7 @@ object ModuleSettings {
     const val KEY_FIX_LIVE_QUALITY_URL_ENABLED = "fix_live_quality_url_enabled"
     const val KEY_PURIFY_HOME_RECOMMEND_AD_ENABLED = "purify_home_recommend_ad_enabled"
     const val KEY_PURIFY_HOME_RECOMMEND_PICTURE_ENABLED = "purify_home_recommend_picture_enabled"
+    const val KEY_PURIFY_HOME_RECOMMEND_GAME_PROMO_ENABLED = "purify_home_recommend_game_promo_enabled"
     const val KEY_BLOCK_HOME_RECOMMEND_AUTO_REFRESH_ENABLED = "block_home_recommend_auto_refresh_enabled"
     const val KEY_HIDE_ALL_HOME_COMPONENTS_ENABLED = "hide_all_home_components_enabled"
     const val KEY_CUSTOM_HOME_COMPONENT_HIDE_ENABLED = "custom_home_component_hide_enabled"
@@ -128,6 +129,9 @@ object ModuleSettings {
 
     fun isPurifyHomeRecommendPictureEnabled(prefs: SharedPreferences): Boolean =
         prefs.getBoolean(KEY_PURIFY_HOME_RECOMMEND_PICTURE_ENABLED, false)
+
+    fun isPurifyHomeRecommendGamePromoEnabled(prefs: SharedPreferences): Boolean =
+        prefs.getBoolean(KEY_PURIFY_HOME_RECOMMEND_GAME_PROMO_ENABLED, false)
 
     fun isBlockHomeRecommendAutoRefreshEnabled(prefs: SharedPreferences): Boolean =
         prefs.getBoolean(KEY_BLOCK_HOME_RECOMMEND_AUTO_REFRESH_ENABLED, false)

@@ -204,6 +204,12 @@ class SettingsContentFactory(
             false,
         )
         rows += createSwitchRow(
+            "移除首页推荐游戏推广",
+            "过滤首页推荐流中的游戏推广卡片，包括“点我玩玩”这类卡片。",
+            ModuleSettings.KEY_PURIFY_HOME_RECOMMEND_GAME_PROMO_ENABLED,
+            false,
+        )
+        rows += createSwitchRow(
             "阻止首页推荐自动刷新",
             "阻止冷启动、长时间后台回到前台或从其他页面返回时自动刷新推荐流，保留手动刷新。",
             ModuleSettings.KEY_BLOCK_HOME_RECOMMEND_AUTO_REFRESH_ENABLED,

@@ -96,6 +96,7 @@ class HomeRecommendAdHook(env: RoamingEnv) : BaseRoamingHook(env) {
         FilterOptions(
             removeAds = ModuleSettings.isPurifyHomeRecommendAdEnabled(prefs),
             removePictures = ModuleSettings.isPurifyHomeRecommendPictureEnabled(prefs),
+            removeGamePromos = ModuleSettings.isPurifyHomeRecommendGamePromoEnabled(prefs),
         )
 
     private fun logRecommendItems(items: List<*>, symbols: FilterSymbols) {
@@ -330,6 +331,7 @@ class HomeRecommendAdHook(env: RoamingEnv) : BaseRoamingHook(env) {
             if (hasAdInfo(item, symbols) && isWideCard(item, symbols)) return "ad_card"
         }
         if (options.removePictures && isPictureCard(item, symbols)) return "picture"
+        if (options.removeGamePromos && isGamePromoCard(item, holderType, symbols)) return "game_promo"
         return null
     }
 
@@ -355,6 +357,66 @@ class HomeRecommendAdHook(env: RoamingEnv) : BaseRoamingHook(env) {
             uri?.startsWith(OPUS_URI_PREFIX) == true
     }
 
+    private fun isGamePromoCard(item: Any, holderType: String?, symbols: FilterSymbols): Boolean {
+        val title = invokeStringMethod(item, "getTitle")
+        val subtitle = invokeStringMethod(item, "getSubtitle")
+        val desc = invokeStringMethod(item, "getDesc")
+        val param = invokeStringMethod(item, "getParam")
+        val label = invokeStringMethod(item, "getLabel")
+        val badge = invokeStringMethod(item, "getBadge")
+        val tag = invokeStringMethod(item, "getTag")
+        val cornerMark = invokeStringMethod(item, "getCornerMark")
+        val buttonText = invokeStringMethod(item, "getButtonText")
+        val bizType = invokeString(symbols.getBizType, item)
+        val cardType = invokeString(symbols.getCardType, item)
+        val cardGoto = invokeString(symbols.getCardGoto, item)
+        val goTo = invokeString(symbols.getGoTo, item)
+        val uri = invokeString(symbols.getUri, item)
+        val args = callNoArg(item, "getArgs")
+        val upArgs = callNoArg(item, "getUpArgs")
+        val extra = callNoArg(item, "getExtra")
+
+        val text = buildList {
+            addAll(
+                listOfNotNull(
+                    title,
+                    subtitle,
+                    desc,
+                    param,
+                    label,
+                    badge,
+                    tag,
+                    cornerMark,
+                    buttonText,
+                    bizType,
+                    cardType,
+                    cardGoto,
+                    goTo,
+                    uri,
+                    holderType,
+                ),
+            )
+            addAll(collectPromoSignals(args))
+            addAll(collectPromoSignals(upArgs))
+            addAll(collectPromoSignals(extra))
+        }
+            .joinToString(separator = " ")
+            .lowercase()
+
+        if (containsGamePromoSignals(text)) {
+            return true
+        }
+
+        val route = listOfNotNull(bizType, cardType, cardGoto, goTo, uri, holderType)
+            .joinToString(separator = " ")
+            .lowercase()
+        return route.contains("game") ||
+            route.contains("mini_game") ||
+            route.contains("game_center") ||
+            route.contains("h5_game") ||
+            route.contains("promotion")
+    }
+
     private fun hasAdInfo(item: Any, symbols: FilterSymbols): Boolean =
         symbols.adInfoClass?.isInstance(item) == true || runCatching {
             symbols.getAdInfo?.invoke(item) != null
@@ -362,6 +424,39 @@ class HomeRecommendAdHook(env: RoamingEnv) : BaseRoamingHook(env) {
 
     private fun invokeString(method: Method?, target: Any): String? =
         runCatching { method?.invoke(target)?.toString() }.getOrNull()
+
+    private fun invokeStringMethod(target: Any, name: String): String? =
+        runCatching {
+            target.javaClass.methods
+                .firstOrNull { it.name == name && it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) }
+                ?.invoke(target)
+                ?.toString()
+        }.getOrNull()
+
+    private fun collectPromoSignals(target: Any?): List<String> {
+        if (target == null) return emptyList()
+        val methods = target.javaClass.methods
+            .asSequence()
+            .filter {
+                it.parameterCount == 0 &&
+                    !Modifier.isStatic(it.modifiers) &&
+                    (it.returnType == String::class.java || CharSequence::class.java.isAssignableFrom(it.returnType)) &&
+                    PROMO_TEXT_METHOD_HINTS.any { hint -> it.name.contains(hint, ignoreCase = true) }
+            }
+            .mapNotNull { method -> runCatching { method.invoke(target)?.toString() }.getOrNull() }
+            .filter { it.isNotBlank() }
+            .toList()
+        return methods
+    }
+
+    private fun containsGamePromoSignals(text: String): Boolean {
+        val hasGameKeyword = GAME_PROMO_GAME_KEYWORDS.any(text::contains)
+        if (!hasGameKeyword) return false
+        return GAME_PROMO_AD_KEYWORDS.any(text::contains) ||
+            text.contains("点我玩玩") ||
+            text.contains("去拼多多") ||
+            text.contains("领取福利")
+    }
 
     private fun isWideCard(item: Any, symbols: FilterSymbols): Boolean {
         val getHolderStyle = symbols.getHolderStyle ?: return true
@@ -402,8 +497,9 @@ class HomeRecommendAdHook(env: RoamingEnv) : BaseRoamingHook(env) {
     private data class FilterOptions(
         val removeAds: Boolean,
         val removePictures: Boolean,
+        val removeGamePromos: Boolean,
     ) {
-        val enabled: Boolean = removeAds || removePictures
+        val enabled: Boolean = removeAds || removePictures || removeGamePromos
     }
 
     private data class FilterResult(
@@ -429,6 +525,37 @@ class HomeRecommendAdHook(env: RoamingEnv) : BaseRoamingHook(env) {
         private const val OPUS_URI_PREFIX = "bilibili://opus/"
         private const val MAX_VALUE_LENGTH = 300
         private const val MAX_LOG_LINE_LENGTH = 3500
+        private val PROMO_TEXT_METHOD_HINTS = listOf(
+            "label",
+            "badge",
+            "tag",
+            "mark",
+            "desc",
+            "text",
+            "title",
+            "name",
+            "button",
+            "corner",
+            "promo",
+            "ad",
+        )
+        private val GAME_PROMO_GAME_KEYWORDS = listOf(
+            "小游戏",
+            "小遊戲",
+            "游戏",
+            "遊戲",
+            "游戏中心",
+            "遊戲中心",
+            "点我玩玩",
+        )
+        private val GAME_PROMO_AD_KEYWORDS = listOf(
+            "广告",
+            "廣告",
+            "推广",
+            "推廣",
+            "福利",
+            "领福利",
+        )
     }
 }
 
