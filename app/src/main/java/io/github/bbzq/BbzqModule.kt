@@ -1,15 +1,15 @@
-﻿package io.github.bbzq
+package io.github.bbzq
 
 import android.app.Application
 import android.content.Context
 import android.util.Log
 import io.github.bbzq.feats.RoamingRuntime
+import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface.HotReloadedParam
 import io.github.libxposed.api.XposedModuleInterface.HotReloadingParam
 import io.github.libxposed.api.XposedModuleInterface.ModuleLoadedParam
-import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam
-import java.lang.reflect.Method
+import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
 
 class BbzqModule : XposedModule() {
     private var packageName: String = ""
@@ -24,21 +24,25 @@ class BbzqModule : XposedModule() {
         )
     }
 
-    override fun onPackageReady(param: PackageReadyParam) {
+    override fun onPackageLoaded(param: PackageLoadedParam) {
         val packageName = param.getPackageName()
         if (packageName !in TARGET_PACKAGES || !param.isFirstPackage()) return
         this.packageName = packageName
-        val application = resolveCurrentApplication()
-        if (application == null) {
-            log(Log.WARN, LOG_TAG, "Package ready but current application is unavailable: $packageName")
-            return
-        }
-        startRuntime(
-            packageName = packageName,
-            processName = processName,
-            application = application,
-            classLoader = param.getClassLoader(),
-        )
+
+        val attach = Application::class.java.getDeclaredMethod("attach", Context::class.java)
+        attach.isAccessible = true
+        hook(attach)
+            .setExceptionMode(XposedInterface.ExceptionMode.PASSTHROUGH)
+            .intercept { chain ->
+                chain.proceed()
+                val application = chain.getThisObject() as? Application ?: return@intercept null
+                startRuntime(
+                    packageName = packageName,
+                    processName = processName,
+                    application = application,
+                    classLoader = param.getDefaultClassLoader(),
+                )
+            }
     }
 
     override fun onHotReloading(param: HotReloadingParam): Boolean {
@@ -114,7 +118,7 @@ class BbzqModule : XposedModule() {
             "com.bilibili.app.blue",
         )
 
-        private val currentApplicationMethod: Method by lazy(LazyThreadSafetyMode.NONE) {
+        private val currentApplicationMethod: java.lang.reflect.Method by lazy(LazyThreadSafetyMode.NONE) {
             Class.forName("android.app.ActivityThread")
                 .getDeclaredMethod("currentApplication")
                 .apply { isAccessible = true }
