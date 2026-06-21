@@ -29,20 +29,24 @@ class BilibiliSponsorBlock(
         }
 
         val hashPrefix = trimmedBvid.sha256().take(HASH_PREFIX_LENGTH)
-        val request = Request.Builder()
-            .url("$BASE_URL$hashPrefix")
-            .header("accept", "application/json")
-            .header("origin", REQUEST_ORIGIN)
-            .header("user-agent", USER_AGENT)
-            .header("x-ext-version", BuildConfig.RELEASE_NAME)
-            .build()
-
-        val result = fetchSegments(request, trimmedBvid)
+        val result = BASE_URLS.asSequence()
+            .map { baseUrl -> fetchSegments(buildRequest(baseUrl, hashPrefix), trimmedBvid) }
+            .firstOrNull { it.status != FetchStatus.FAILED && it.status != FetchStatus.NOT_FOUND }
+            ?: fetchSegments(buildRequest(BASE_URLS.last(), hashPrefix), trimmedBvid)
         if (result.status.shouldCache) {
             cache[trimmedBvid] = CacheEntry(result)
         }
         return result.filterByCategories(enabledCategories).filterByCid(cid)
     }
+
+    private fun buildRequest(baseUrl: String, hashPrefix: String): Request =
+        Request.Builder()
+            .url("$baseUrl$hashPrefix")
+            .header("accept", "application/json")
+            .header("origin", REQUEST_ORIGIN)
+            .header("user-agent", USER_AGENT)
+            .header("x-ext-version", BuildConfig.RELEASE_NAME)
+            .build()
 
     private fun fetchSegments(request: Request, targetBvid: String): FetchResult {
         return try {
@@ -192,12 +196,16 @@ class BilibiliSponsorBlock(
 
     private companion object {
         private const val ACTION_SKIP = "skip"
-        private const val BASE_URL = "https://bsbsb.top/api/skipSegments/"
         private const val CACHE_TTL_MS = 5 * 60 * 1000L
         private const val HASH_PREFIX_LENGTH = 4
         private const val REQUEST_ORIGIN = "BBZQ"
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android; Xposed; NkBe) BBZQ/1.0"
 
+        private val BASE_URLS = listOf(
+            "https://bsbsb.top/api/skipSegments/",
+            "https://www.bsbsb.xyz/api/skipSegments/",
+            "http://154.222.28.109/api/skipSegments/",
+        )
         private val cache = ConcurrentHashMap<String, CacheEntry>()
 
         private val httpClient by lazy {
