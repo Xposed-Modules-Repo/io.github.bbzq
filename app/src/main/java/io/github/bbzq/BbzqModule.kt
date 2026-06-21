@@ -4,17 +4,14 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import io.github.bbzq.feats.RoamingRuntime
-import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface.HotReloadedParam
 import io.github.libxposed.api.XposedModuleInterface.HotReloadingParam
 import io.github.libxposed.api.XposedModuleInterface.ModuleLoadedParam
-import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
+import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam
 import java.lang.reflect.Method
-import java.util.concurrent.atomic.AtomicBoolean
 
 class BbzqModule : XposedModule() {
-    private val started = AtomicBoolean(false)
     private var packageName: String = ""
     private var processName: String = ""
 
@@ -27,29 +24,21 @@ class BbzqModule : XposedModule() {
         )
     }
 
-    override fun onPackageLoaded(param: PackageLoadedParam) {
+    override fun onPackageReady(param: PackageReadyParam) {
         val packageName = param.getPackageName()
         if (packageName !in TARGET_PACKAGES || !param.isFirstPackage()) return
         this.packageName = packageName
-
-        val attach = Application::class.java.getDeclaredMethod("attach", Context::class.java)
-        hook(attach)
-            .setExceptionMode(XposedInterface.ExceptionMode.PASSTHROUGH)
-            .intercept { chain ->
-                val result = chain.proceed()
-                val application = chain.getThisObject() as? Application
-                val baseContext = chain.getArg(0) as? Context
-                val context = application ?: baseContext
-                if (context != null && started.compareAndSet(false, true)) {
-                    startRuntime(
-                        packageName = packageName,
-                        processName = processName,
-                        application = context,
-                        classLoader = param.getDefaultClassLoader(),
-                    )
-                }
-                result
-            }
+        val application = resolveCurrentApplication()
+        if (application == null) {
+            log(Log.WARN, LOG_TAG, "Package ready but current application is unavailable: $packageName")
+            return
+        }
+        startRuntime(
+            packageName = packageName,
+            processName = processName,
+            application = application,
+            classLoader = param.getClassLoader(),
+        )
     }
 
     override fun onHotReloading(param: HotReloadingParam): Boolean {
@@ -79,7 +68,6 @@ class BbzqModule : XposedModule() {
         }
 
         packageName = resolvedPackageName
-        started.set(true)
         startRuntime(
             packageName = resolvedPackageName,
             processName = processName,

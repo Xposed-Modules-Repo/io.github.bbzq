@@ -84,11 +84,7 @@ object ModuleRemotePreferences : XposedServiceHelper.OnServiceListener {
     }
 
     private fun Context.moduleSettingsPreferences(): SharedPreferences =
-        try {
-            getSharedPreferences(ModuleSettings.PREFS_NAME, Context.MODE_WORLD_READABLE)
-        } catch (_: SecurityException) {
-            getSharedPreferences(ModuleSettings.PREFS_NAME, Context.MODE_PRIVATE)
-        }
+        getSharedPreferences(ModuleSettings.PREFS_NAME, Context.MODE_PRIVATE)
 }
 
 sealed interface PreferenceOperation {

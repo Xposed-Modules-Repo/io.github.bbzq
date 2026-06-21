@@ -89,11 +89,10 @@ class ModuleSettingsProvider : ContentProvider() {
     private fun contextOrThrow(): Context = checkNotNull(context)
 
     private fun Context.moduleSettingsPrefs(): SharedPreferences =
-        ReadableModulePreferences(this, try {
-            getSharedPreferences(ModuleSettings.PREFS_NAME, Context.MODE_WORLD_READABLE)
-        } catch (_: SecurityException) {
-            getSharedPreferences(ModuleSettings.PREFS_NAME, Context.MODE_PRIVATE)
-        })
+        ReadableModulePreferences(
+            this,
+            getSharedPreferences(ModuleSettings.PREFS_NAME, Context.MODE_PRIVATE),
+        )
 
     private fun requireKey(key: String?): String = requireNotNull(key) { "Preference key is required" }
 
