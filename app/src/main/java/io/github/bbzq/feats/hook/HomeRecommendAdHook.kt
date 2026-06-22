@@ -25,79 +25,82 @@ class HomeRecommendAdHook(env: RoamingEnv) : BaseRoamingHook(env) {
 
     override fun startHook() {
         if (env.processName != env.packageName) return
+        ModuleSettings.refreshKnownHomeRecommendItemsCache(prefs)
         val options = currentOptions()
         if (!options.enabled) {
             log("startHook: HomeRecommendAd disabled, provider=${ModuleSettingsBridge.lastProviderStatus}")
             return
         }
 
-        val responseClass = PEGASUS_RESPONSE.from(classLoader)
         val holderDataClass = PEGASUS_HOLDER_DATA.from(classLoader)
-        val baseDataClass = BASE_PEGASUS_DATA.from(classLoader)
-        if (responseClass == null || holderDataClass == null) {
-            log("startHook: HomeRecommendAd missing response=$responseClass holderData=$holderDataClass")
+        val baseDataClass = BASE_PEGASUS_DATA_CLASSES.firstNotNullOfOrNull { it.from(classLoader) }
+        val responseClasses = PEGASUS_RESPONSE_CLASSES.mapNotNull { it.from(classLoader) }
+        if (responseClasses.isEmpty() || holderDataClass == null) {
+            log("startHook: HomeRecommendAd missing response=$responseClasses holderData=$holderDataClass")
             return
         }
 
-        val getItems = responseClass.methodsNamed("getItems")
-            .firstOrNull {
-                it.parameterCount == 0 &&
-                    List::class.java.isAssignableFrom(it.returnType) &&
-                    !Modifier.isStatic(it.modifiers) &&
-                    !Modifier.isAbstract(it.modifiers)
-            }
-        val getHolderType = holderDataClass.methodsNamed("getHolderType")
-            .firstOrNull {
-                it.parameterCount == 0 &&
-                    it.returnType == String::class.java &&
-                    !Modifier.isStatic(it.modifiers)
-            }
-        if (getItems == null || getHolderType == null) {
-            log("startHook: HomeRecommendAd no hook point found getItems=$getItems getHolderType=$getHolderType")
-            return
-        }
+        var count = 0
+        responseClasses.forEach { responseClass ->
+            val getItems = responseClass.methodsNamed("getItems")
+                .firstOrNull {
+                    it.parameterCount == 0 &&
+                        List::class.java.isAssignableFrom(it.returnType) &&
+                        !Modifier.isStatic(it.modifiers) &&
+                        !Modifier.isAbstract(it.modifiers)
+                }
+                ?: return@forEach
+            val getHolderType = holderDataClass.methodsNamed("getHolderType")
+                .firstOrNull {
+                    it.parameterCount == 0 &&
+                        it.returnType == String::class.java &&
+                        !Modifier.isStatic(it.modifiers)
+                }
+                ?: return@forEach
 
-        val symbols = FilterSymbols(
-            getHolderType = getHolderType,
-            getBizType = holderDataClass.methodsNamed("getBizType")
-                .firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
-            getHolderStyle = holderDataClass.methodsNamed("getHolderStyle")
-                .firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
-            isSmallCard = HOLDER_STYLE.from(classLoader)
-                ?.methodsNamed("isSmallCard")
-                ?.firstOrNull { it.parameterCount == 0 && it.returnType == Boolean::class.javaPrimitiveType },
-            getAdInfo = baseDataClass?.methodsNamed("getAdInfo")
-                ?.firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
-            getCardType = baseDataClass?.methodsNamed("getCardType")
-                ?.firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
-            getCardGoto = baseDataClass?.methodsNamed("getCardGoto")
-                ?.firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
-            getGoTo = baseDataClass?.methodsNamed("getGoTo")
-                ?.firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
-            getUri = baseDataClass?.methodsNamed("getUri")
-                ?.firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
-            adInfoClass = AD_INFO.from(classLoader),
-            itemsField = responseClass.allFields()
-                .filter { List::class.java.isAssignableFrom(it.type) }
-                .singleOrNull(),
-        )
+            val symbols = FilterSymbols(
+                getHolderType = getHolderType,
+                getBizType = holderDataClass.methodsNamed("getBizType")
+                    .firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
+                getHolderStyle = holderDataClass.methodsNamed("getHolderStyle")
+                    .firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
+                isSmallCard = HOLDER_STYLE.from(classLoader)
+                    ?.methodsNamed("isSmallCard")
+                    ?.firstOrNull { it.parameterCount == 0 && it.returnType == Boolean::class.javaPrimitiveType },
+                getAdInfo = baseDataClass?.methodsNamed("getAdInfo")
+                    ?.firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
+                getCardType = baseDataClass?.methodsNamed("getCardType")
+                    ?.firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
+                getCardGoto = baseDataClass?.methodsNamed("getCardGoto")
+                    ?.firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
+                getGoTo = baseDataClass?.methodsNamed("getGoTo")
+                    ?.firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
+                getUri = baseDataClass?.methodsNamed("getUri")
+                    ?.firstOrNull { it.parameterCount == 0 && !Modifier.isStatic(it.modifiers) },
+                adInfoClass = AD_INFO.from(classLoader),
+                itemsField = responseClass.allFields()
+                    .filter { List::class.java.isAssignableFrom(it.type) }
+                    .singleOrNull(),
+            )
 
-        env.hookAfter(getItems) { param ->
-            (param.result as? List<*>)?.let { logRecommendItems(it, symbols) }
-            val result = handleReturnList(param, symbols, currentOptions())
-            if (result != null && (result.removed > 0 || isDebugModule())) {
-                val parts = buildList {
-                    if (result.removed > 0) {
-                        add("removed ${result.removed} item(s) reasons=${result.reasonSummary()}")
-                    }
-                    if (result.rewrittenVerticalAv > 0) {
-                        add("rewrote ${result.rewrittenVerticalAv} vertical_av item(s)")
-                    }
-                }.joinToString(separator = " ")
-                log("HomeRecommendAd $parts from ${getItems.declaringClass.name}.${getItems.name}")
+            env.hookAfter(getItems) { param ->
+                (param.result as? List<*>)?.let { logRecommendItems(it, symbols) }
+                val result = handleReturnList(param, symbols, currentOptions())
+                if (result != null && (result.removed > 0 || isDebugModule())) {
+                    val parts = buildList {
+                        if (result.removed > 0) {
+                            add("removed ${result.removed} item(s) reasons=${result.reasonSummary()}")
+                        }
+                        if (result.rewrittenVerticalAv > 0) {
+                            add("rewrote ${result.rewrittenVerticalAv} vertical_av item(s)")
+                        }
+                    }.joinToString(separator = " ")
+                    log("HomeRecommendAd $parts from ${getItems.declaringClass.name}.${getItems.name}")
+                }
             }
+            count += 1
         }
-        log("startHook: HomeRecommendAd at ${getItems.declaringClass.name}.${getItems.name}")
+        log("startHook: HomeRecommendAd methods=$count responseClasses=${responseClasses.size}")
     }
 
     private fun currentOptions(): FilterOptions =
@@ -604,9 +607,16 @@ class HomeRecommendAdHook(env: RoamingEnv) : BaseRoamingHook(env) {
     }
 
     private companion object {
-        private const val PEGASUS_RESPONSE = "com.bilibili.pegasus.data.base.PegasusResponse"
+        private val PEGASUS_RESPONSE_CLASSES = arrayOf(
+            "com.bilibili.pegasus.data.base.PegasusResponse",
+            "com.bilibili.pegasus.p5730data.p5731base.PegasusResponse",
+            "com.bilibili.pegasus.p5730data.request.PegasusResponseWrapper",
+        )
         private const val PEGASUS_HOLDER_DATA = "com.bilibili.pegasus.PegasusHolderData"
-        private const val BASE_PEGASUS_DATA = "com.bilibili.pegasus.data.base.BasePegasusData"
+        private val BASE_PEGASUS_DATA_CLASSES = arrayOf(
+            "com.bilibili.pegasus.data.base.BasePegasusData",
+            "com.bilibili.pegasus.p5730data.p5731base.BasePegasusData",
+        )
         private const val HOLDER_STYLE = "com.bilibili.pegasus.HolderStyle"
         private const val AD_INFO = "com.bilibili.adcommon.data.IAdInfo"
         private const val BANNER_V8 = "banner_v8"

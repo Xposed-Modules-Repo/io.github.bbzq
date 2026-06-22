@@ -20,6 +20,7 @@ class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingH
 
     override fun startHook() {
         if (env.processName != env.packageName) return
+        ModuleSettings.refreshKnownHomeRecommendItemsCache(prefs)
         val fragmentClass = ANDROIDX_FRAGMENT.from(classLoader)
         if (fragmentClass == null) {
             log("startHook: HomeComponentHide missing androidx.fragment.app.Fragment")
@@ -33,6 +34,7 @@ class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingH
         count += env.hookAfterMethod(fragmentClass, "onHiddenChanged", Boolean::class.javaPrimitiveType!!) { param ->
             processFragment(param.thisObject)
         }
+        count += hookHomeComponentCatalog()
         count += hookHomeRecommendItems()
 
         if (count == 0) {
@@ -52,6 +54,41 @@ class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingH
         saveKnownComponent(className)
         attachPersistentHider(root, className)
         applyVisibility(root, className)
+    }
+
+    private fun hookHomeComponentCatalog(): Int {
+        var count = 0
+        BASE_HOME_FRAGMENT_CLASSES.mapNotNull { it.from(classLoader) }.forEach { baseHomeFragmentClass ->
+            listOf("onAttach", "onCreate", "onCreateView", "onViewCreated", "onResume").forEach { methodName ->
+                count += env.hookAfterAllMethods(baseHomeFragmentClass, methodName) { param ->
+                    runCatching {
+                        collectHomeComponentCatalog(param.thisObject)
+                    }.onFailure {
+                        log("HomeComponentHide component catalog hook failed at ${baseHomeFragmentClass.name}.$methodName", it)
+                    }
+                }
+            }
+        }
+        return count
+    }
+
+    private fun collectHomeComponentCatalog(fragment: Any?) {
+        if (fragment == null) return
+        val fragmentName = fragment.javaClass.name
+        if (!BASE_HOME_FRAGMENT_NAMES.any { baseName ->
+                fragmentName.equals(baseName, ignoreCase = true) ||
+                    fragmentName.contains(baseName, ignoreCase = true)
+            }) return
+
+        val components = runCatching {
+            fragment.callMethod("m169957gf") as? List<*>
+        }.getOrNull().orEmpty()
+
+        components.forEach { component ->
+            val className = component?.javaClass?.name ?: return@forEach
+            if (className.isBlank()) return@forEach
+            saveKnownComponent(className)
+        }
     }
 
     private fun resolveHomeComponent(fragment: Any): Any? {
@@ -126,17 +163,10 @@ class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingH
     }
 
     private fun hookHomeRecommendItems(): Int {
-        val responseClass = PEGASUS_RESPONSE.from(classLoader) ?: return 0
+        val responseClasses = PEGASUS_RESPONSE_CLASSES.mapNotNull { it.from(classLoader) }
         val holderDataClass = PEGASUS_HOLDER_DATA.from(classLoader) ?: return 0
+        if (responseClasses.isEmpty()) return 0
 
-        val getItems = responseClass.methodsNamed("getItems")
-            .firstOrNull {
-                it.parameterCount == 0 &&
-                    List::class.java.isAssignableFrom(it.returnType) &&
-                    !Modifier.isStatic(it.modifiers) &&
-                    !Modifier.isAbstract(it.modifiers)
-            }
-            ?: return 0
         val getHolderType = holderDataClass.methodsNamed("getHolderType")
             .firstOrNull {
                 it.parameterCount == 0 &&
@@ -151,44 +181,56 @@ class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingH
                     !Modifier.isStatic(it.modifiers) &&
                     !Modifier.isAbstract(it.modifiers)
             }
-        val itemsField = responseClass.allFields()
-            .filter { List::class.java.isAssignableFrom(it.type) }
-            .singleOrNull()
+        var count = 0
+        responseClasses.forEach { responseClass ->
+            val getItems = responseClass.methodsNamed("getItems")
+                .firstOrNull {
+                    it.parameterCount == 0 &&
+                        List::class.java.isAssignableFrom(it.returnType) &&
+                        !Modifier.isStatic(it.modifiers) &&
+                        !Modifier.isAbstract(it.modifiers)
+                }
+                ?: return@forEach
+            val itemsField = responseClass.allFields()
+                .filter { List::class.java.isAssignableFrom(it.type) }
+                .singleOrNull()
 
-        env.hookAfter(getItems) { param ->
-            val items = param.result as? List<*> ?: return@hookAfter
-            val hiddenKeys = ModuleSettings.getHiddenHomeRecommendItems(prefs)
-            val enabled = ModuleSettings.isCustomHomeRecommendFilterEnabled(prefs)
-            val filtered = ArrayList<Any?>(items.size)
-            val knownItems = linkedSetOf<String>()
-            var removed = 0
+            env.hookAfter(getItems) { param ->
+                val items = param.result as? List<*> ?: return@hookAfter
+                val hiddenKeys = ModuleSettings.getHiddenHomeRecommendItems(prefs)
+                val enabled = ModuleSettings.isCustomHomeRecommendFilterEnabled(prefs)
+                val filtered = ArrayList<Any?>(items.size)
+                val knownItems = linkedSetOf<String>()
+                var removed = 0
 
-            items.forEachIndexed { index, item ->
-                val entry = item?.extractRecommendItemEntry(index, getHolderType, getBizType)
-                if (entry == null) {
-                    filtered += item
-                    return@forEachIndexed
+                items.forEachIndexed { index, item ->
+                    val entry = item?.extractRecommendItemEntry(index, getHolderType, getBizType)
+                    if (entry == null) {
+                        filtered += item
+                        return@forEachIndexed
+                    }
+
+                    knownItems += encodeRecommendItem(entry.order, entry.key, entry.bizType, entry.className)
+                    if (enabled && entry.key in hiddenKeys) {
+                        removed += 1
+                    } else {
+                        filtered += item
+                    }
                 }
 
-                knownItems += encodeRecommendItem(entry.order, entry.key, entry.bizType, entry.className)
-                if (enabled && entry.key in hiddenKeys) {
-                    removed += 1
-                } else {
-                    filtered += item
-                }
+                saveKnownHomeRecommendItems(knownItems)
+                if (removed == 0) return@hookAfter
+
+                param.result = filtered
+                writeBackFilteredItems(param.thisObject, itemsField, filtered)
+                log(
+                    "HomeComponentHide removed $removed home item(s) " +
+                        "from ${getItems.declaringClass.name}.${getItems.name}",
+                )
             }
-
-            saveKnownHomeRecommendItems(knownItems)
-            if (removed == 0) return@hookAfter
-
-            param.result = filtered
-            writeBackFilteredItems(param.thisObject, itemsField, filtered)
-            log(
-                "HomeComponentHide removed $removed home item(s) " +
-                    "from ${getItems.declaringClass.name}.${getItems.name}",
-            )
+            count += 1
         }
-        return 1
+        return count
     }
 
     private fun Any.extractRecommendItemEntry(
@@ -266,10 +308,23 @@ class HomeComponentHideHook(env: io.github.bbzq.feats.RoamingEnv) : BaseRoamingH
 
     private companion object {
         private const val ANDROIDX_FRAGMENT = "androidx.fragment.app.Fragment"
-        private const val PEGASUS_RESPONSE = "com.bilibili.pegasus.data.base.PegasusResponse"
+        private val BASE_HOME_FRAGMENT_CLASSES = arrayOf(
+            "tv.danmaku.bili.home.tab.page.BaseHomeFragment",
+            "tv.danmaku.p9138bili.p9170home.p9173tab.p9174page.BaseHomeFragment",
+        )
+        private val BASE_HOME_FRAGMENT_NAMES = BASE_HOME_FRAGMENT_CLASSES.map { it.lowercase() }
+        private val PEGASUS_RESPONSE_CLASSES = arrayOf(
+            "com.bilibili.pegasus.data.base.PegasusResponse",
+            "com.bilibili.pegasus.p5730data.p5731base.PegasusResponse",
+            "com.bilibili.pegasus.p5730data.request.PegasusResponseWrapper",
+        )
         private const val PEGASUS_HOLDER_DATA = "com.bilibili.pegasus.PegasusHolderData"
         private const val LISTENER_TAG_KEY = 0x7F0B1120
         private val HOME_CONTAINER_KEYWORDS = listOf(
+            "basehomefragment",
+            "homefragment",
+            "homeframe",
+            "pagebuildcomponent",
             "main2.homefragment",
             "homefragmentv2",
         )

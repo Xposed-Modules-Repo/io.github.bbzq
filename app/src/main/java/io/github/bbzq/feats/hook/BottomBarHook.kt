@@ -12,21 +12,45 @@ import java.lang.reflect.Method
 
 class BottomBarHook(env: RoamingEnv) : BaseRoamingHook(env) {
     override fun startHook() {
+        ModuleSettings.refreshKnownBottomBarItemsCache(prefs)
         val parserMethods = findParserMethods()
+        val resourceMethods = findResourceManagerMethods()
 
         parserMethods.forEach { method ->
             env.hookAfter(method) { param ->
-                runCatching { dispatch(param.result) }
+                runCatching {
+                    dispatch(param.result)?.let { updated ->
+                        if (updated !== param.result) {
+                            param.result = updated
+                        }
+                    }
+                }
                     .onFailure {
                         log("Bottom bar processor failed at ${method.declaringClass.name}.${method.name}", it)
+                    }
+                }
+        }
+
+        resourceMethods.forEach { method ->
+            env.hookAfter(method) { param ->
+                runCatching {
+                    dispatch(param.result)?.let { updated ->
+                        if (updated !== param.result) {
+                            param.result = updated
+                        }
+                    }
+                }
+                    .onFailure {
+                        log("Bottom bar resource processor failed at ${method.declaringClass.name}.${method.name}", it)
                     }
             }
         }
 
-        if (parserMethods.isEmpty()) {
-            log("startHook: BottomBar, no parser found")
+        val totalMethods = parserMethods.size + resourceMethods.size
+        if (totalMethods == 0) {
+            log("startHook: BottomBar, no hook point found")
         } else {
-            log("startHook: BottomBar, methods=${parserMethods.size}")
+            log("startHook: BottomBar, methods=$totalMethods")
         }
     }
 
@@ -105,16 +129,42 @@ class BottomBarHook(env: RoamingEnv) : BaseRoamingHook(env) {
             ?.filterNotNull()
             ?.toTypedArray()
 
+    private fun findResourceManagerMethods(): List<Method> = RESOURCE_MANAGER_CLASSES
+        .mapNotNull { it.from(classLoader) }
+        .flatMap { type ->
+            type.declaredMethods.asSequence()
+                .filter { method ->
+                    method.name in RESOURCE_MANAGER_METHOD_NAMES &&
+                        List::class.java.isAssignableFrom(method.returnType) &&
+                        method.parameterCount == 2 &&
+                        method.parameterTypes.firstOrNull() == Int::class.javaPrimitiveType &&
+                        List::class.java.isAssignableFrom(method.parameterTypes[1])
+                }
+                .toList()
+        }
+        .distinctBy(Method::toGenericString)
+
     private fun resolveParameterType(typeName: String): Class<*>? = when (typeName) {
         "int" -> Int::class.javaPrimitiveType
         else -> typeName.from(classLoader)
     }
 
-    private fun dispatch(rawResult: Any?) {
-        val result = unwrap(rawResult) ?: return
-        if (!result.isTabResponse()) return
+    private fun dispatch(rawResult: Any?): Any? {
+        val result = unwrap(rawResult) ?: return null
+        val bottom = when (result) {
+            is MutableList<*> -> {
+                @Suppress("UNCHECKED_CAST")
+                result as MutableList<Any?>
+            }
 
-        val bottom = result.extractBottomItems() ?: return
+            is List<*> -> result.toMutableList() as MutableList<Any?>
+
+            else -> {
+                if (!result.isTabResponse()) return null
+                result.extractBottomItems() ?: return null
+            }
+        }
+
         val hiddenIds = ModuleSettings.getHiddenBottomBarItems(prefs)
         val enabled = ModuleSettings.isCustomBottomBarEnabled(prefs)
         val knownItems = linkedSetOf<String>()
@@ -132,6 +182,7 @@ class BottomBarHook(env: RoamingEnv) : BaseRoamingHook(env) {
         }
 
         saveKnownItems(knownItems)
+        return if (result is List<*> && result !is MutableList<*>) bottom else result
     }
 
     private fun unwrap(result: Any?): Any? {
@@ -296,5 +347,10 @@ class BottomBarHook(env: RoamingEnv) : BaseRoamingHook(env) {
             "tv.danmaku.bili.ui.main2.resource.MainResourceManager\$TabResponse",
             "tv.danmaku.p9138bili.p9228ui.main2.resource.MainResourceManager\$TabResponse",
         )
+        private val RESOURCE_MANAGER_CLASSES = setOf(
+            "tv.danmaku.bili.ui.main2.resource.MainResourceManager",
+            "tv.danmaku.p9138bili.p9228ui.main2.resource.MainResourceManager",
+        )
+        private val RESOURCE_MANAGER_METHOD_NAMES = setOf("m171910c", "m171911d")
     }
 }
