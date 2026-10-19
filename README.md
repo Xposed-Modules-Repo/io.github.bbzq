@@ -1,19 +1,21 @@
 # BBZQ
-> 使用 `libxposed API 102`、由 Kotlin 全量编写的哔哩哔哩增强 Xposed 模组
+> 使用 `Modern API`、由 Kotlin 全量编写的哔哩哔哩增强 Xposed 模组
 
-![Kotlin](https://img.shields.io/badge/Kotlin-2.4.10-7F52FF?logo=kotlin&logoColor=white)
-![API](https://img.shields.io/badge/libxposed-API%20102-orange)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.4.20-7F52FF?logo=kotlin&logoColor=white)
+![API](https://img.shields.io/badge/API-Modern%20API-orange)
 ![License](https://img.shields.io/badge/license-Mulan%20PubL%20v2-blue)
 
 ---
 
 ## 简介
-BBZQ 是一款适配 libxposed API 102 的哔哩哔哩功能增强模组，采用 Kotlin 完整实作，旨在去除不必要内容、优化核心体验，同时提供各类实用功能。	
+BBZQ 是一款适配 Modern API 的哔哩哔哩功能增强模组，采用 Kotlin 完整实作，旨在去除不必要内容、优化核心体验，同时提供各类实用功能。
 模组通过 `META-INF/xposed/java_init.list` 完成入口注册，核心逻辑入口为 `io.github.bbzq.BbzqModule`；配套设置页面内嵌于哔哩哔哩宿主应用外，方便快捷开关各项功能、调整个性化参数，整体架构便于后续迭代维护与功能扩展。
 
 ---
 
 ## 版本适配说明
+
+本模组要求 **Android 9.0（API 28）及以上**，仅适配哔哩哔哩 **9.0.0 及以上版本**（包括概率版）。
 
 | 模块版本    | 哔哩哔哩版本 |
 | ------- | ------ |
@@ -21,20 +23,24 @@ BBZQ 是一款适配 libxposed API 102 的哔哩哔哩功能增强模组，采�
 | v1.0.2  | 8.98.0 |
 | v1.0.3  | 8.99.0 |
 | v1.1.0+ | 9.0.0+ |
+| v1.5.0+ | 9.15.0（9.10.0 以前版本不再重点适配） |
 
 > 说明：
-> v1.0.3 的 CI 构建版本推荐 9.0.0。  
+> v1.0.3 的 CI 构建版本推荐 9.0.0。
 > 从 v1.1.0 开始，模组将仅适配 9.0.0 及以上版本。
+
+> [!IMPORTANT]
+> v1.5.0 更换了签名密钥，无法直接覆盖安装 v1.4.1 及更早版本。请先在旧版「关于 → 配置备份」中导出配置，卸载旧版后安装新版，再导入配置。
 
 ---
 
 ## 使用方式
 
 1. 安装模组 APK
-2. 在支持 `libxposed API 102` 的 Xposed 框架中启用該模组
+2. 在支持 `Modern API` 的 Xposed 框架中启用该模组
 3. 将哔哩哔哩加入作用域
 4. 重启目标应用
-5. 进入 `我的 → 设置 → 高级设置`
+5. 进入 `我的 → 设置 → 关于哔哩哔哩 → BBZQ 设置`
 6. 启用需要的功能
 
 > [!WARNING]
@@ -42,8 +48,16 @@ BBZQ 是一款适配 libxposed API 102 的哔哩哔哩功能增强模组，采�
 > 參考 https://github.com/HSSkyBoy/BBZQ/issues/5 和 https://github.com/HSSkyBoy/BBZQ/issues/17
 
 
-> 桌面图标是模组自身介绍页，不是独立的调试工具。  
+> 桌面图标是模组自身介绍页，不是独立的调试工具。
 > 双击 版本 有隐藏的秘密。
+
+---
+
+## 免 Root 支援
+
+本模组已集成 [NPatch-Remote-API](https://github.com/7723mod/NPatch-Remote-API)：
+- 免 Root 环境下**推荐使用 NPatch**（v1.0.7 或更高版本）。
+- 支持直接在桌面打开 BBZQ 独立应用修改各项设置，配置将通过 NPatch 管理器的 Remote Store 自动双向同步至目标应用，无需重新打包或每次进入宿主应用设置。
 
 ---
 
@@ -54,12 +68,12 @@ BBZQ 是一款适配 libxposed API 102 的哔哩哔哩功能增强模组，采�
 
 ### 已知限制
 
+- 不再适配旧国际版(白色图示版)，9.10.0 以前版本不再重点适配
 - 设置入口依赖宿主设置页结构，大版本更新后可能不会及时适配
-- 暂不计划支持地区解锁功能
 
 ---
 
 ## 许可证
 
-本项目使用木兰公共许可证，第 2 版（Mulan PubL v2）。 
+本项目使用木兰公共许可证，第 2 版（Mulan PubL v2）。
 完整授权见 [LICENSE](https://license.coscl.org.cn/MulanPubL-2.0)。
